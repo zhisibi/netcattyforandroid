@@ -212,22 +212,39 @@ class TerminalViewModel @Inject constructor(
         _uiState.update { it.copy(connectionError = null) }
     }
 
-    // ─── Foreground Service Integration ───
+    // ─── WakeLock for keeping SSH alive ───
+
+    private val wakeLock by lazy {
+        val pm = appContext.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        pm.newWakeLock(
+            android.os.PowerManager.PARTIAL_WAKE_LOCK,
+            "netcatty::ssh-connection"
+        ).apply {
+            acquire(30 * 60 * 1000L) // 30 min max
+        }
+    }
 
     private fun startForegroundService(hostLabel: String) {
-        val intent = Intent(appContext, SshConnectionService::class.java).apply {
-            action = SshConnectionService.ACTION_CONNECT
-            putExtra(SshConnectionService.EXTRA_HOST_LABEL, hostLabel)
+        // Use WakeLock instead of foreground service to avoid Android 14+ FGS type restrictions
+        try {
+            if (!wakeLock.isHeld) {
+                wakeLock.acquire(30 * 60 * 1000L)
+            }
+            android.util.Log.d("TerminalVM", "WakeLock acquired for SSH connection")
+        } catch (e: Exception) {
+            android.util.Log.w("TerminalVM", "Failed to acquire WakeLock: ${e.message}")
         }
-        appContext.startForegroundService(intent)
     }
 
     private fun stopForegroundServiceIfNeeded() {
         if (_uiState.value.sessions.none { it.status == TerminalStatus.CONNECTED }) {
-            val intent = Intent(appContext, SshConnectionService::class.java).apply {
-                action = SshConnectionService.ACTION_DISCONNECT
+            try {
+                if (wakeLock.isHeld) {
+                    wakeLock.release()
+                }
+            } catch (e: Exception) {
+                // WakeLock not held
             }
-            appContext.startService(intent)
         }
     }
 
@@ -236,11 +253,14 @@ class TerminalViewModel @Inject constructor(
         terminalSessions.values.forEach { it.close() }
         terminalSessions.clear()
         sshSessionManager.disconnectAll()
-        // Stop foreground service
-        val intent = Intent(appContext, SshConnectionService::class.java).apply {
-            action = SshConnectionService.ACTION_DISCONNECT
+        // Release WakeLock
+        try {
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+            }
+        } catch (e: Exception) {
+            // Not held
         }
-        appContext.startService(intent)
     }
 }
 

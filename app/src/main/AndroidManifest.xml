@@ -7,7 +7,7 @@
 
     <!-- Foreground Service for SSH connections -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Biometric -->
@@ -34,7 +34,6 @@
         <!-- SSH Connection Foreground Service -->
         <service
             android:name=".service.SshConnectionService"
-            android:foregroundServiceType="connectedDevice"
             android:exported="false" />
 
         <!-- SFTP Transfer Foreground Service -->
