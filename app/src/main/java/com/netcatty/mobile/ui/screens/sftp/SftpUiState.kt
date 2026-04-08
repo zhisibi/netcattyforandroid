@@ -1,6 +1,7 @@
 package com.netcatty.mobile.ui.screens.sftp
 
 import com.netcatty.mobile.core.ssh.SftpClient
+import java.io.File
 
 data class SftpUiState(
     val isConnected: Boolean = false,
@@ -10,7 +11,9 @@ data class SftpUiState(
     val localFiles: List<LocalFileEntry> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val transferProgress: TransferProgress? = null
+    val transferProgress: TransferProgress? = null,
+    val pendingDownloadEntry: SftpClient.SftpFileEntry? = null,
+    val previewFile: File? = null
 )
 
 data class LocalFileEntry(

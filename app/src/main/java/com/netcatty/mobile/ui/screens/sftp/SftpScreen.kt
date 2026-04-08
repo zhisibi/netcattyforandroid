@@ -1,5 +1,10 @@
 package com.netcatty.mobile.ui.screens.sftp
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -23,8 +29,8 @@ fun SftpScreen(
     viewModel: SftpViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
-    // Auto-connect
     LaunchedEffect(connectHostId) {
         if (connectHostId != null) {
             viewModel.connectToHost(connectHostId)
@@ -35,7 +41,24 @@ fun SftpScreen(
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf<SftpClient.SftpFileEntry?>(null) }
     var showDeleteConfirm by remember { mutableStateOf<SftpClient.SftpFileEntry?>(null) }
-    var showUploadFab by remember { mutableStateOf(false) }
+
+    // File picker for upload
+    val uploadLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.uploadFromUri(it, context.contentResolver)
+        }
+    }
+
+    // Save picker for download
+    val downloadLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*")
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.downloadToUri(uiState.pendingDownloadEntry!!, it, context.contentResolver)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -54,9 +77,19 @@ fun SftpScreen(
                 }
             },
             actions = {
+                // Upload button
+                if (uiState.isConnected) {
+                    IconButton(onClick = {
+                        uploadLauncher.launch(arrayOf("*/*"))
+                    }) {
+                        Icon(Icons.Default.UploadFile, contentDescription = "Upload")
+                    }
+                }
+                // New folder button
                 IconButton(onClick = { showNewFolderDialog = true }) {
                     Icon(Icons.Default.CreateNewFolder, contentDescription = "New folder")
                 }
+                // Refresh
                 IconButton(onClick = { viewModel.refresh() }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                 }
@@ -99,22 +132,16 @@ fun SftpScreen(
                 action = {
                     TextButton(onClick = { viewModel.dismissError() }) { Text("Dismiss") }
                 }
-            ) { Text(error) }
+            ) { Text(error, maxLines = 2) }
         }
 
         if (!uiState.isConnected) {
-            // Not connected
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Folder,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                    )
+                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(12.dp))
                     Text("No SFTP connection", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(4.dp))
@@ -133,28 +160,14 @@ fun SftpScreen(
                         onClick = {
                             if (entry.type == SftpClient.FileType.DIRECTORY) {
                                 viewModel.navigateTo(entry.name)
+                            } else {
+                                // File click → show actions (download/preview)
+                                showRenameDialog = entry
                             }
-                        },
-                        onLongClick = {
-                            // Show context actions for the file
-                            showRenameDialog = entry
                         }
                     )
                 }
             }
-        }
-    }
-
-    // Upload FAB
-    if (uiState.isConnected) {
-        FloatingActionButton(
-            onClick = { showUploadFab = true },
-            modifier = Modifier
-                .padding(16.dp)
-                .navigationBarsPadding(),
-            containerColor = MaterialTheme.colorScheme.primary
-        ) {
-            Icon(Icons.Default.UploadFile, contentDescription = "Upload")
         }
     }
 
@@ -169,13 +182,22 @@ fun SftpScreen(
         )
     }
 
-    // Rename dialog
+    // File actions dialog (rename / download / delete / preview)
     showRenameDialog?.let { entry ->
-        RenameDialog(
-            currentName = entry.name,
+        FileActionsDialog(
+            entry = entry,
             onDismiss = { showRenameDialog = null },
-            onConfirm = { newName ->
+            onRename = { newName ->
                 viewModel.rename(entry.name, newName)
+                showRenameDialog = null
+            },
+            onDownload = {
+                viewModel.prepareDownload(entry)
+                downloadLauncher.launch(entry.name)
+                showRenameDialog = null
+            },
+            onPreview = {
+                viewModel.previewFile(entry, context.contentResolver)
                 showRenameDialog = null
             },
             onDelete = {
@@ -210,16 +232,12 @@ fun SftpScreen(
 @Composable
 fun SftpFileRow(
     entry: SftpClient.SftpFileEntry,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .also { modifier ->
-                // Combine click + long click
-            }
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -227,7 +245,19 @@ fun SftpFileRow(
             imageVector = when (entry.type) {
                 SftpClient.FileType.DIRECTORY -> Icons.Default.Folder
                 SftpClient.FileType.SYMLINK -> Icons.Default.Link
-                SftpClient.FileType.FILE -> Icons.Default.Description
+                SftpClient.FileType.FILE -> when {
+                    entry.name.endsWith(".txt") || entry.name.endsWith(".md") || entry.name.endsWith(".log") ||
+                    entry.name.endsWith(".conf") || entry.name.endsWith(".yaml") || entry.name.endsWith(".yml") ||
+                    entry.name.endsWith(".json") || entry.name.endsWith(".xml") || entry.name.endsWith(".sh") ||
+                    entry.name.endsWith(".py") || entry.name.endsWith(".js") || entry.name.endsWith(".ts") ||
+                    entry.name.endsWith(".kt") || entry.name.endsWith(".java") || entry.name.endsWith(".c") ||
+                    entry.name.endsWith(".cfg") || entry.name.endsWith(".ini") || entry.name.endsWith(".toml")
+                        -> Icons.Default.Description
+                    entry.name.endsWith(".jpg") || entry.name.endsWith(".png") || entry.name.endsWith(".gif") ||
+                    entry.name.endsWith(".webp") || entry.name.endsWith(".bmp")
+                        -> Icons.Default.Image
+                    else -> Icons.Default.Description
+                }
             },
             contentDescription = null,
             tint = when (entry.type) {
@@ -244,16 +274,19 @@ fun SftpFileRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                formatFileSize(entry.size),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        // More actions button
-        if (entry.type != SftpClient.FileType.SYMLINK) {
-            IconButton(onClick = onLongClick, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.MoreVert, contentDescription = "More", modifier = Modifier.size(18.dp))
+            Row {
+                Text(
+                    formatFileSize(entry.size),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                entry.permissions?.let { perm ->
+                    Text(
+                        "  $perm",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
             }
         }
     }
@@ -294,20 +327,32 @@ fun NewFolderDialog(
 }
 
 @Composable
-fun RenameDialog(
-    currentName: String,
+fun FileActionsDialog(
+    entry: SftpClient.SftpFileEntry,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onRename: (String) -> Unit,
+    onDownload: () -> Unit,
+    onPreview: () -> Unit,
     onDelete: () -> Unit
 ) {
-    var newName by remember { mutableStateOf(currentName) }
+    var newName by remember { mutableStateOf(entry.name) }
     var error by remember { mutableStateOf<String?>(null) }
+    val isTextFile = entry.type == SftpClient.FileType.FILE && (
+        entry.name.endsWith(".txt") || entry.name.endsWith(".md") || entry.name.endsWith(".log") ||
+        entry.name.endsWith(".conf") || entry.name.endsWith(".yaml") || entry.name.endsWith(".yml") ||
+        entry.name.endsWith(".json") || entry.name.endsWith(".xml") || entry.name.endsWith(".sh") ||
+        entry.name.endsWith(".py") || entry.name.endsWith(".js") || entry.name.endsWith(".ts") ||
+        entry.name.endsWith(".kt") || entry.name.endsWith(".java") || entry.name.endsWith(".c") ||
+        entry.name.endsWith(".cfg") || entry.name.endsWith(".ini") || entry.name.endsWith(".toml") ||
+        entry.name.endsWith(".env") || entry.name.endsWith(".properties") || entry.name.endsWith(".csv")
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("File Actions") },
+        title = { Text(entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Rename field
                 OutlinedTextField(
                     value = newName,
                     onValueChange = { newName = it; error = null },
@@ -316,6 +361,35 @@ fun RenameDialog(
                     isError = error != null,
                     supportingText = error?.let { { Text(it) } }
                 )
+
+                // Action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Download button
+                    OutlinedButton(
+                        onClick = onDownload,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Download")
+                    }
+                    // Preview button (only for text files)
+                    if (isTextFile) {
+                        OutlinedButton(
+                            onClick = onPreview,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Preview")
+                        }
+                    }
+                }
+
+                // Delete button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -324,7 +398,7 @@ fun RenameDialog(
                         onClick = onDelete,
                         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Delete")
                     }
@@ -334,8 +408,8 @@ fun RenameDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (newName.isBlank()) error = "Name cannot be empty"
-                else if (newName == currentName) onDismiss()
-                else onConfirm(newName.trim())
+                else if (newName == entry.name) onDismiss()
+                else onRename(newName.trim())
             }) { Text("Rename") }
         },
         dismissButton = {

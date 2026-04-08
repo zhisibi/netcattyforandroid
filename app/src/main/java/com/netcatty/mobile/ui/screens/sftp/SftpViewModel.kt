@@ -1,8 +1,10 @@
 package com.netcatty.mobile.ui.screens.sftp
 
 import android.content.ContentResolver
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.netcatty.mobile.core.ssh.SftpClient
@@ -15,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.InputStream
+import java.io.File
 import java.io.OutputStream
 import javax.inject.Inject
 
@@ -127,33 +129,73 @@ class SftpViewModel @Inject constructor(
     }
 
     /**
-     * Upload a file from a content URI (picked via SAF).
-     * Runs in the ViewModel scope, updates progress.
+     * Prepare a download — store the entry so the callback knows what to download
+     */
+    fun prepareDownload(entry: SftpClient.SftpFileEntry) {
+        _uiState.update { it.copy(pendingDownloadEntry = entry) }
+    }
+
+    /**
+     * Download a remote file to a SAF Uri (chosen by user)
+     */
+    fun downloadToUri(entry: SftpClient.SftpFileEntry, uri: Uri, contentResolver: ContentResolver) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val client = sftpClient ?: throw IllegalStateException("SFTP not connected")
+                val remotePath = buildPath(_uiState.value.remotePath, entry.name)
+
+                _uiState.update { it.copy(transferProgress = TransferProgress(entry.name, 0, entry.size)) }
+
+                // Download to temp file first
+                val cacheDir = File("/data/data/com.netcatty.mobile/cache")
+                val tmpFile = File(cacheDir, "download_tmp_${entry.name}")
+                client.download(remotePath, tmpFile.absolutePath, object : com.jcraft.jsch.SftpProgressMonitor {
+                    override fun init(op: Int, src: String, dest: String, max: Long) {}
+                    override fun count(count: Long): Boolean {
+                        _uiState.update { state ->
+                            state.copy(transferProgress = state.transferProgress?.copy(transferred = count))
+                        }
+                        return true
+                    }
+                    override fun end() {}
+                })
+
+                // Copy temp file to SAF Uri
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    tmpFile.inputStream().use { input -> input.copyTo(output) }
+                }
+
+                tmpFile.delete()
+                _uiState.update { it.copy(transferProgress = null, pendingDownloadEntry = null) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = e.message, transferProgress = null) }
+            }
+        }
+    }
+
+    /**
+     * Upload a file from a content URI (picked via SAF)
      */
     fun uploadFromUri(uri: Uri, contentResolver: ContentResolver) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = sftpClient ?: throw IllegalStateException("SFTP not connected")
 
-                // Get filename from content resolver
                 val fileName = queryFileName(contentResolver, uri) ?: "upload_${System.currentTimeMillis()}"
                 val remotePath = buildPath(_uiState.value.remotePath, fileName)
 
-                // Update progress
                 _uiState.update { it.copy(transferProgress = TransferProgress(fileName, 0, 1)) }
 
-                // Read entire stream into byte array (for small-to-medium files)
-                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: throw IllegalStateException("Cannot read file")
+                // Read to temp file
+                val cacheDir = File("/data/data/com.netcatty.mobile/cache")
+                val tmpFile = File(cacheDir, "upload_tmp_${fileName}")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    tmpFile.outputStream().use { output -> input.copyTo(output) }
+                }
 
-                _uiState.update { it.copy(transferProgress = TransferProgress(fileName, 0, bytes.size.toLong())) }
+                _uiState.update { it.copy(transferProgress = TransferProgress(fileName, 0, tmpFile.length())) }
 
-                // Upload via SFTP using stream
-                val tmpLocalPath = "/data/data/com.netcatty.mobile/cache/upload_tmp"
-                // Write to temp file first, then upload
-                java.io.File(tmpLocalPath).outputStream().use { out -> out.write(bytes) }
-
-                client.upload(tmpLocalPath, remotePath, object : com.jcraft.jsch.SftpProgressMonitor {
+                client.upload(tmpFile.absolutePath, remotePath, object : com.jcraft.jsch.SftpProgressMonitor {
                     override fun init(op: Int, src: String, dest: String, max: Long) {}
                     override fun count(count: Long): Boolean {
                         _uiState.update { state ->
@@ -166,9 +208,7 @@ class SftpViewModel @Inject constructor(
                     }
                 })
 
-                // Clean up temp file
-                java.io.File(tmpLocalPath).delete()
-
+                tmpFile.delete()
                 listDirectory(_uiState.value.remotePath)
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, transferProgress = null) }
@@ -177,46 +217,34 @@ class SftpViewModel @Inject constructor(
     }
 
     /**
-     * Download a remote file to Downloads directory.
+     * Preview a text file — download to cache and open with external app
      */
-    fun downloadFile(entry: SftpClient.SftpFileEntry, outputStream: OutputStream) {
+    fun previewFile(entry: SftpClient.SftpFileEntry, contentResolver: ContentResolver) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = sftpClient ?: throw IllegalStateException("SFTP not connected")
                 val remotePath = buildPath(_uiState.value.remotePath, entry.name)
 
-                _uiState.update { it.copy(transferProgress = TransferProgress(entry.name, 0, entry.size)) }
+                // Download to cache
+                val cacheDir = File("/data/data/com.netcatty.mobile/cache/sftp_preview")
+                cacheDir.mkdirs()
+                val localFile = File(cacheDir, entry.name)
+                client.download(remotePath, localFile.absolutePath)
 
-                // Download to temp, then copy to output stream
-                val tmpLocalPath = "/data/data/com.netcatty.mobile/cache/download_tmp"
-                client.download(remotePath, tmpLocalPath, object : com.jcraft.jsch.SftpProgressMonitor {
-                    override fun init(op: Int, src: String, dest: String, max: Long) {}
-                    override fun count(count: Long): Boolean {
-                        _uiState.update { state ->
-                            state.copy(transferProgress = state.transferProgress?.copy(transferred = count))
-                        }
-                        return true
-                    }
-                    override fun end() {}
-                })
-
-                // Copy to output stream
-                java.io.File(tmpLocalPath).inputStream().use { input ->
-                    outputStream.use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                java.io.File(tmpLocalPath).delete()
-
-                _uiState.update { it.copy(transferProgress = null) }
+                // Notify UI to open the file
+                _uiState.update { it.copy(previewFile = localFile) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.message, transferProgress = null) }
+                _uiState.update { it.copy(error = e.message) }
             }
         }
     }
 
     fun dismissError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    fun clearPreview() {
+        _uiState.update { it.copy(previewFile = null) }
     }
 
     private fun listDirectory(path: String) {

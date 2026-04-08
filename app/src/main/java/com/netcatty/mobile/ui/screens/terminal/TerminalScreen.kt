@@ -195,9 +195,14 @@ private fun TerminalContent(
         }
     }
 
-    // Request focus when active tab changes
+    // Request focus when active tab changes (delay to ensure layout is complete)
     LaunchedEffect(activeTab.id) {
-        focusRequester.requestFocus()
+        kotlinx.coroutines.delay(300)
+        try {
+            focusRequester.requestFocus()
+        } catch (_: IllegalStateException) {
+            // BringIntoViewRequester not ready yet, ignore
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -207,7 +212,9 @@ private fun TerminalContent(
             modifier = Modifier
                 .fillMaxSize()
                 .clickable {
-                    focusRequester.requestFocus()
+                    try {
+                        focusRequester.requestFocus()
+                    } catch (_: IllegalStateException) {}
                     val imm = context.getSystemService(InputMethodManager::class.java)
                     imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
                 }
