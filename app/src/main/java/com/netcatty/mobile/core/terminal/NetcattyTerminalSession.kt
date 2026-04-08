@@ -1,15 +1,14 @@
 package com.netcatty.mobile.core.terminal
 
-import com.jcraft.jsch.ChannelShell
 import com.netcatty.mobile.core.ssh.SshConnection
 import java.io.IOException
 
 /**
- * 桥接 JSch SSH Channel 和 Termux TerminalSession。
+ * 桥接 JSch SSH Channel 和 UI。
  *
  * 数据流：
- *   JSch InputStream → TerminalSession.write() → TerminalView 渲染
- *   TerminalView 输入 → SshConnection.write() → JSch OutputStream
+ *   JSch InputStream → strip ANSI → onOutput callback → UI
+ *   UI 输入 → write() → JSch OutputStream
  */
 class NetcattyTerminalSession(
     private val connection: SshConnection,
@@ -26,8 +25,12 @@ class NetcattyTerminalSession(
                 while (alive && connection.status == SshConnection.ConnectionStatus.CONNECTED) {
                     val read = connection.inputStream.read(buffer)
                     if (read == -1) break
-                    val data = String(buffer, 0, read, Charsets.UTF_8)
-                    onOutput(data)
+                    val raw = String(buffer, 0, read, Charsets.UTF_8)
+                    // Strip ANSI codes for plain text rendering
+                    val cleaned = AnsiStripper.strip(raw)
+                    if (cleaned.isNotEmpty()) {
+                        onOutput(cleaned)
+                    }
                 }
             } catch (_: IOException) {
                 // Connection closed

@@ -2,8 +2,12 @@ package com.netcatty.mobile.ui.screens.terminal
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.netcatty.mobile.core.crypto.FieldCryptoManager
+import com.netcatty.mobile.core.crypto.SessionKeyHolder
+import com.netcatty.mobile.core.ssh.SshConnection
 import com.netcatty.mobile.core.ssh.SshSessionManager
 import com.netcatty.mobile.core.terminal.NetcattyTerminalSession
+import com.netcatty.mobile.domain.model.Host
 import com.netcatty.mobile.domain.repository.HostRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -17,13 +21,13 @@ import javax.inject.Inject
 @HiltViewModel
 class TerminalViewModel @Inject constructor(
     private val sshSessionManager: SshSessionManager,
-    private val hostRepository: HostRepository
+    private val hostRepository: HostRepository,
+    private val fieldCryptoManager: FieldCryptoManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TerminalUiState())
     val uiState: StateFlow<TerminalUiState> = _uiState.asStateFlow()
 
-    // Active terminal sessions (sessionId → NetcattyTerminalSession)
     private val terminalSessions = mutableMapOf<String, NetcattyTerminalSession>()
 
     /**
@@ -39,7 +43,8 @@ class TerminalViewModel @Inject constructor(
                 return@launch
             }
 
-            val result = sshSessionManager.connect(host)
+            // 解密密码
+            val result = sshSessionManager.connect(host, passwordOverride = getDecryptedPassword(host))
             result.fold(
                 onSuccess = { connection ->
                     val tab = TerminalTab(
@@ -48,18 +53,19 @@ class TerminalViewModel @Inject constructor(
                         hostLabel = host.label,
                         hostname = host.hostname,
                         username = host.username,
-                        status = TerminalStatus.CONNECTED
+                        status = TerminalStatus.CONNECTED,
+                        output = StringBuilder()
                     )
 
-                    // Create terminal session
+                    // 创建终端会话
                     val terminalSession = NetcattyTerminalSession(
                         connection = connection,
                         onOutput = { data ->
                             _uiState.update { state ->
                                 val sessions = state.sessions.map {
-                                    if (it.id == connection.id) it.copy(
-                                        output = it.output.append(data)
-                                    ) else it
+                                    if (it.id == connection.id) {
+                                        it.copy(output = it.output.append(data))
+                                    } else it
                                 }
                                 state.copy(sessions = sessions)
                             }
@@ -67,7 +73,8 @@ class TerminalViewModel @Inject constructor(
                         onExit = {
                             _uiState.update { state ->
                                 val sessions = state.sessions.map {
-                                    if (it.id == connection.id) it.copy(status = TerminalStatus.DISCONNECTED)
+                                    if (it.id == connection.id)
+                                        it.copy(status = TerminalStatus.DISCONNECTED)
                                     else it
                                 }
                                 state.copy(sessions = sessions)
@@ -85,7 +92,7 @@ class TerminalViewModel @Inject constructor(
                         )
                     }
 
-                    // Update last connected
+                    // 更新最后连接时间
                     launch { hostRepository.updateLastConnected(hostId, System.currentTimeMillis()) }
                 },
                 onFailure = { error ->
@@ -101,16 +108,23 @@ class TerminalViewModel @Inject constructor(
     }
 
     /**
-     * 向当前终端写入数据
+     * 解密主机密码，返回明文
      */
+    private fun getDecryptedPassword(host: Host): String? {
+        if (host.passwordEncrypted == null) return null
+        return try {
+            fieldCryptoManager.decrypt(host.passwordEncrypted)
+        } catch (e: Exception) {
+            // 可能已是明文（首次未加密保存）
+            host.passwordEncrypted
+        }
+    }
+
     fun writeToTerminal(data: String) {
         val sessionId = _uiState.value.activeSessionId ?: return
         terminalSessions[sessionId]?.write(data)
     }
 
-    /**
-     * 发送特殊键
-     */
     fun sendSpecialKey(key: SpecialKey) {
         val sessionId = _uiState.value.activeSessionId ?: return
         val session = terminalSessions[sessionId] ?: return
@@ -132,16 +146,10 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
-    /**
-     * 切换到指定 Tab
-     */
     fun switchTab(sessionId: String) {
         _uiState.update { it.copy(activeSessionId = sessionId) }
     }
 
-    /**
-     * 关闭指定 Tab
-     */
     fun closeTab(sessionId: String) {
         terminalSessions.remove(sessionId)?.close()
         sshSessionManager.disconnect(sessionId)
@@ -156,9 +164,6 @@ class TerminalViewModel @Inject constructor(
         }
     }
 
-    /**
-     * 调整终端尺寸
-     */
     fun resize(cols: Int, rows: Int) {
         val sessionId = _uiState.value.activeSessionId ?: return
         terminalSessions[sessionId]?.resize(cols, rows)

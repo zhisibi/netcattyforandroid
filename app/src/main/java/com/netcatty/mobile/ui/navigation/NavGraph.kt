@@ -11,6 +11,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -27,9 +30,12 @@ import com.netcatty.mobile.ui.screens.settings.SettingsScreen
 import com.netcatty.mobile.ui.screens.sftp.SftpScreen
 import com.netcatty.mobile.ui.screens.terminal.TerminalScreen
 import com.netcatty.mobile.ui.screens.terminal.TerminalViewModel
+import com.netcatty.mobile.ui.screens.unlock.UnlockScreen
+import com.netcatty.mobile.ui.screens.unlock.UnlockViewModel
 import com.netcatty.mobile.ui.screens.vault.VaultScreen
 
 object Routes {
+    const val UNLOCK = "unlock"
     const val VAULT = "vault"
     const val TERMINAL = "terminal"
     const val TERMINAL_HOST = "terminal/{hostId}"
@@ -45,11 +51,11 @@ data class BottomNavItem(
 )
 
 val bottomNavItems = listOf(
-    BottomNavItem(Routes.VAULT, "Vault", Icons.AutoMirrored.Filled.ViewList),
-    BottomNavItem(Routes.TERMINAL, "Terminal", Icons.Filled.Terminal),
+    BottomNavItem(Routes.VAULT, "Hosts", Icons.AutoMirrored.Filled.ViewList),
+    BottomNavItem(Routes.TERMINAL, "Term", Icons.Filled.Terminal),
     BottomNavItem(Routes.SFTP, "SFTP", Icons.Filled.Folder),
     BottomNavItem(Routes.AI_CHAT, "AI", Icons.AutoMirrored.Filled.Send),
-    BottomNavItem(Routes.SETTINGS, "Settings", Icons.Filled.Settings),
+    BottomNavItem(Routes.SETTINGS, "Set", Icons.Filled.Settings),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +64,10 @@ fun NetcattyNavHost(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    val showBottomBar = currentDestination?.route != Routes.TERMINAL_HOST
+    // Unlock gate: show unlock if not unlocked
+    var isUnlocked by rememberSaveable { mutableStateOf(false) }
+
+    val showBottomBar = isUnlocked && currentDestination?.route != Routes.TERMINAL_HOST
 
     Scaffold(
         bottomBar = {
@@ -86,9 +95,30 @@ fun NetcattyNavHost(navController: NavHostController) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.VAULT,
+            startDestination = if (isUnlocked) Routes.VAULT else Routes.UNLOCK,
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable(Routes.UNLOCK) {
+                val unlockVm: UnlockViewModel = hiltViewModel()
+                LaunchedEffect(unlockVm.uiState.value.isUnlocked) {
+                    if (unlockVm.uiState.value.isUnlocked) {
+                        isUnlocked = true
+                        navController.navigate(Routes.VAULT) {
+                            popUpTo(Routes.UNLOCK) { inclusive = true }
+                        }
+                    }
+                }
+                UnlockScreen(
+                    onUnlocked = {
+                        isUnlocked = true
+                        navController.navigate(Routes.VAULT) {
+                            popUpTo(Routes.UNLOCK) { inclusive = true }
+                        }
+                    },
+                    viewModel = unlockVm
+                )
+            }
+
             composable(Routes.VAULT) {
                 VaultScreen(
                     onHostClick = { hostId ->
