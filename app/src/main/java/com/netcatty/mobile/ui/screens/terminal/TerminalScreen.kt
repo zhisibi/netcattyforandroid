@@ -1,27 +1,18 @@
 package com.netcatty.mobile.ui.screens.terminal
 
-import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.os.Handler
-import android.os.Looper
-import android.text.InputType
 import android.view.KeyEvent
-import android.view.View
-import android.view.ViewGroup
-import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -29,20 +20,26 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.netcatty.mobile.ui.theme.TerminalConfig
 import com.netcatty.mobile.ui.screens.snippet.SnippetPickerSheet
 import kotlinx.coroutines.launch
 
-private val TERMINAL_BG = Color(0xFF1E1E2E)
-private val TERMINAL_FG = Color(0xFFCDD6F4)
-private val CURSOR_COLOR = Color(0xFFF9E2AF)
+private val TERMINAL_BG = ComposeColor(0xFF1E1E2E)
+private val TERMINAL_FG = ComposeColor(0xFFCDD6F4)
+private val CURSOR_COLOR = ComposeColor(0xFFF9E2AF)
+private val INPUT_BAR_BG = ComposeColor(0xFF181825)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,7 +48,6 @@ fun TerminalScreen(
     viewModel: TerminalViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
     var showSnippetSheet by remember { mutableStateOf(false) }
     val snippets by viewModel.snippets.collectAsState(initial = emptyList())
 
@@ -92,7 +88,7 @@ fun TerminalScreen(
             }
         }
 
-        // Terminal area — takes all remaining space above special keys
+        // Terminal area
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -130,7 +126,7 @@ fun TerminalScreen(
             }
         }
 
-        // Special keys row — always pinned at bottom, above keyboard
+        // Special keys row
         if (uiState.activeSession != null) {
             SpecialKeysRow(
                 onSpecialKey = { viewModel.sendSpecialKey(it) },
@@ -172,107 +168,6 @@ fun TerminalScreen(
     }
 }
 
-/**
- * Full-screen transparent View that accepts IME input.
- *
- * Why full-screen + transparent?
- * - IMM refuses showSoftInput() for views with 0 or tiny size ("not served")
- * - Full-size view ensures IMM always accepts it
- * - Transparent background + Compose renders on top → user sees terminal, not the View
- * - Touch events go to Compose layer (on top), which calls showKeyboard() programmatically
- */
-class TerminalInputView(context: Context) : View(context) {
-
-    /** Set by AndroidView update block — the bridge to ViewModel.writeToTerminal */
-    var onTextInput: ((String) -> Unit) = {}
-
-    fun showKeyboard() {
-        requestFocus()
-        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.showSoftInput(this, InputMethodManager.SHOW_FORCED)
-    }
-
-    fun hideKeyboard() {
-        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.hideSoftInputFromWindow(windowToken, 0)
-    }
-
-    override fun onCheckIsTextEditor(): Boolean = true
-
-    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
-        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or
-                EditorInfo.IME_FLAG_NO_EXTRACT_UI or
-                EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING or
-                EditorInfo.IME_ACTION_NONE
-        outAttrs.actionId = EditorInfo.IME_ACTION_NONE
-        outAttrs.initialSelStart = -1
-        outAttrs.initialSelEnd = -1
-
-        return object : BaseInputConnection(this, true) {
-
-            override fun commitText(text: CharSequence, newCursorPosition: Int): Boolean {
-                onTextInput(text.toString())
-                return true
-            }
-
-            override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-                if (beforeLength > 0) {
-                    onTextInput("\u007F")  // DEL = backspace in SSH
-                }
-                if (afterLength > 0) {
-                    onTextInput("\u001B[3~")  // Delete key
-                }
-                return true
-            }
-
-            override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean {
-                return deleteSurroundingText(beforeLength, afterLength)
-            }
-
-            override fun sendKeyEvent(event: KeyEvent): Boolean {
-                if (event.action == KeyEvent.ACTION_DOWN) {
-                    when (event.keyCode) {
-                        KeyEvent.KEYCODE_ENTER -> { onTextInput("\r"); return true }
-                        KeyEvent.KEYCODE_DEL -> { onTextInput("\u007F"); return true }
-                        KeyEvent.KEYCODE_TAB -> { onTextInput("\t"); return true }
-                        KeyEvent.KEYCODE_DPAD_UP -> { onTextInput("\u001B[A"); return true }
-                        KeyEvent.KEYCODE_DPAD_DOWN -> { onTextInput("\u001B[B"); return true }
-                        KeyEvent.KEYCODE_DPAD_LEFT -> { onTextInput("\u001B[D"); return true }
-                        KeyEvent.KEYCODE_DPAD_RIGHT -> { onTextInput("\u001B[C"); return true }
-                        KeyEvent.KEYCODE_HOME -> { onTextInput("\u001B[H"); return true }
-                        KeyEvent.KEYCODE_MOVE_END -> { onTextInput("\u001B[F"); return true }
-                        KeyEvent.KEYCODE_PAGE_UP -> { onTextInput("\u001B[5~"); return true }
-                        KeyEvent.KEYCODE_PAGE_DOWN -> { onTextInput("\u001B[6~"); return true }
-                        KeyEvent.KEYCODE_C -> {
-                            if (event.isCtrlPressed) { onTextInput("\u0003"); return true }
-                        }
-                        KeyEvent.KEYCODE_D -> {
-                            if (event.isCtrlPressed) { onTextInput("\u0004"); return true }
-                        }
-                        KeyEvent.KEYCODE_Z -> {
-                            if (event.isCtrlPressed) { onTextInput("\u001A"); return true }
-                        }
-                        KeyEvent.KEYCODE_L -> {
-                            if (event.isCtrlPressed) { onTextInput("\u000C"); return true }
-                        }
-                    }
-                }
-                return super.sendKeyEvent(event)
-            }
-
-            override fun performEditorAction(actionCode: Int): Boolean {
-                onTextInput("\r")
-                return true
-            }
-
-            override fun performPrivateCommand(action: String?, data: android.os.Bundle?): Boolean {
-                return true
-            }
-        }
-    }
-}
-
 @Composable
 private fun TerminalContent(
     activeTab: TerminalTab,
@@ -282,8 +177,11 @@ private fun TerminalContent(
     val context = LocalContext.current
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    var inputViewRef by remember { mutableStateOf<TerminalInputView?>(null) }
+    val focusRequester = remember { FocusRequester() }
     val terminalFontSize = TerminalConfig.fontSize()
+
+    // Input field state — each character is sent immediately and field is cleared
+    var inputFieldValue by remember { mutableStateOf(TextFieldValue("")) }
 
     // Blinking cursor animation
     val infiniteTransition = rememberInfiniteTransition(label = "cursor")
@@ -306,127 +204,163 @@ private fun TerminalContent(
         }
     }
 
-    // When keyboard is showing, keep cursor visible by scrolling to bottom
-    LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(500)
-            val view = inputViewRef ?: continue
-            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-            if (imm.isActive(view)) {
-                val total = listState.layoutInfo.totalItemsCount
-                if (total > 0) {
-                    val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                    if (lastVisible < total - 1) {
-                        coroutineScope.launch { listState.animateScrollToItem(total - 1) }
-                    }
-                }
-            }
-        }
+    // Auto-focus input when session becomes active
+    LaunchedEffect(activeTab.id) {
+        kotlinx.coroutines.delay(300)
+        try { focusRequester.requestFocus() } catch (_: Exception) { }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-
-        // Layer 1: Full-size TerminalInputView (bottom of z-order, transparent)
-        AndroidView(
-            factory = { ctx ->
-                TerminalInputView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    isFocusable = true
-                    isFocusableInTouchMode = true
-                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                }.also { inputViewRef = it }
-            },
-            update = { view ->
-                view.onTextInput = onSendText
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Layer 2: Compose terminal content on top (receives touch events)
-        Column(
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Status bar
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .clickable(indication = null, interactionSource = null) {
-                    inputViewRef?.showKeyboard()
-                }
+                .fillMaxWidth()
+                .background(ComposeColor(0xFF313244))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Status bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF313244))
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val statusColor = when (activeTab.status) {
-                    TerminalStatus.CONNECTED -> Color(0xFFA6E3A1)
-                    TerminalStatus.CONNECTING -> Color(0xFFF9E2AF)
-                    TerminalStatus.DISCONNECTED -> Color(0xFFF38BA8)
-                    TerminalStatus.ERROR -> Color(0xFFF38BA8)
-                }
-                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(statusColor))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    "${activeTab.username}@${activeTab.hostLabel}",
-                    color = TERMINAL_FG,
-                    style = MaterialTheme.typography.labelSmall
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                // Hide keyboard button
-                IconButton(
-                    onClick = { inputViewRef?.hideKeyboard() },
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        Icons.Default.KeyboardHide,
-                        contentDescription = "Hide keyboard",
-                        tint = TERMINAL_FG.copy(alpha = 0.5f),
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+            val statusColor = when (activeTab.status) {
+                TerminalStatus.CONNECTED -> ComposeColor(0xFFA6E3A1)
+                TerminalStatus.CONNECTING -> ComposeColor(0xFFF9E2AF)
+                TerminalStatus.DISCONNECTED -> ComposeColor(0xFFF38BA8)
+                TerminalStatus.ERROR -> ComposeColor(0xFFF38BA8)
             }
+            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(statusColor))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                "${activeTab.username}@${activeTab.hostLabel}",
+                color = TERMINAL_FG,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
 
-            // Terminal output + blinking cursor
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                state = listState
-            ) {
-                val lines = activeTab.output.split("\n")
-                items(lines.size) { index ->
-                    if (index == lines.lastIndex) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = lines[index],
-                                color = TERMINAL_FG,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = terminalFontSize
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .width(8.dp)
-                                    .height(16.dp)
-                                    .background(CURSOR_COLOR.copy(alpha = cursorAlpha))
-                            )
-                        }
-                    } else {
+        // Terminal output
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            state = listState
+        ) {
+            val lines = activeTab.output.split("\n")
+            items(lines.size) { index ->
+                if (index == lines.lastIndex) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text(
                             text = lines[index],
                             color = TERMINAL_FG,
                             fontFamily = FontFamily.Monospace,
-                            fontSize = terminalFontSize,
-                            modifier = Modifier.fillMaxWidth()
+                            fontSize = terminalFontSize
+                        )
+                        Box(
+                            modifier = Modifier
+                                .width(8.dp)
+                                .height(16.dp)
+                                .background(CURSOR_COLOR.copy(alpha = cursorAlpha))
                         )
                     }
+                } else {
+                    Text(
+                        text = lines[index],
+                        color = TERMINAL_FG,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = terminalFontSize,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
+            }
+        }
+
+        // Input bar — visible text input at the bottom of the terminal
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(INPUT_BAR_BG)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .height(44.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Terminal prompt indicator
+            Text(
+                "›",
+                color = TERMINAL_FG.copy(alpha = 0.5f),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 16.sp,
+                modifier = Modifier.padding(end = 4.dp)
+            )
+
+            // Input field
+            androidx.compose.foundation.text.BasicTextField(
+                value = inputFieldValue,
+                onValueChange = { newValue ->
+                    // Only process if text was actually added (not deletion)
+                    val oldText = inputFieldValue.text
+                    val newText = newValue.text
+                    
+                    if (newText.length > oldText.length) {
+                        // New characters were typed — send them to SSH
+                        val added = newText.substring(oldText.length)
+                        onSendText(added)
+                    } else if (newText.length < oldText.length) {
+                        // Characters were deleted — send backspace
+                        val deletedCount = oldText.length - newText.length
+                        repeat(deletedCount) { onSendText("\u007F") }
+                    }
+                    
+                    // Clear the field after sending (keeps IME happy)
+                    inputFieldValue = TextFieldValue("", TextRange(0))
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .focusRequester(focusRequester),
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = TERMINAL_FG,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp
+                ),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        onSendText("\r")
+                    }
+                ),
+                singleLine = true,
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(ComposeColor.Transparent)
+            )
+
+            // Keyboard toggle button
+            val context = LocalContext.current
+            IconButton(
+                onClick = {
+                    val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    val activity = context as? android.app.Activity
+                    val view = activity?.currentFocus
+                    if (view != null) {
+                        if (imm.isActive(view)) {
+                            imm.hideSoftInputFromWindow(view.windowToken, 0)
+                        } else {
+                            try { focusRequester.requestFocus() } catch (_: Exception) { }
+                            imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                        }
+                    } else {
+                        try { focusRequester.requestFocus() } catch (_: Exception) { }
+                    }
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Keyboard,
+                    contentDescription = "Keyboard",
+                    tint = TERMINAL_FG.copy(alpha = 0.5f),
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
@@ -440,12 +374,12 @@ fun SpecialKeysRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF313244))
+            .background(ComposeColor(0xFF313244))
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 4.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        SpecialKeyBtn("⚡", onClick = onShowSnippets)  // Snippet button
+        SpecialKeyBtn("⚡", onClick = onShowSnippets)
         SpecialKeyBtn("ESC", onClick = { onSpecialKey(SpecialKey.ESC) })
         SpecialKeyBtn("Tab", onClick = { onSpecialKey(SpecialKey.TAB) })
         SpecialKeyBtn("⌃C", onClick = { onSpecialKey(SpecialKey.CTRL_C) })
