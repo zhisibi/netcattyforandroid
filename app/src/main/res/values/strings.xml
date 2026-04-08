@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Netcatty</string>
+
+    <!-- Navigation -->
+    <string name="nav_vault">Vault</string>
+    <string name="nav_terminal">Terminal</string>
+    <string name="nav_sftp">SFTP</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Vault -->
+    <string name="vault_empty_title">No hosts yet</string>
+    <string name="vault_empty_subtitle">Tap + to add your first SSH host</string>
+    <string name="vault_search_hint">Search hosts…</string>
+    <string name="vault_add_host">Add Host</string>
+    <string name="vault_edit_host">Edit Host</string>
+
+    <!-- Host Form -->
+    <string name="host_label">Label</string>
+    <string name="host_hostname">Hostname</string>
+    <string name="host_port">Port</string>
+    <string name="host_username">Username</string>
+    <string name="host_password">Password</string>
+    <string name="host_auth_method">Auth Method</string>
+    <string name="host_group">Group</string>
+    <string name="host_tags">Tags</string>
+
+    <!-- Auth Methods -->
+    <string name="auth_password">Password</string>
+    <string name="auth_key">SSH Key</string>
+    <string name="auth_certificate">Certificate</string>
+
+    <!-- Terminal -->
+    <string name="terminal_disconnected">Disconnected</string>
+    <string name="terminal_connecting">Connecting to %s…</string>
+    <string name="terminal_connected">Connected</string>
+
+    <!-- SFTP -->
+    <string name="sftp_local">Local</string>
+    <string name="sftp_remote">Remote</string>
+    <string name="sftp_upload">Upload</string>
+    <string name="sftp_download">Download</string>
+
+    <!-- Settings -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_terminal">Terminal</string>
+    <string name="settings_security">Security</string>
+    <string name="settings_sync">Cloud Sync</string>
+    <string name="settings_ai">AI Assistant</string>
+    <string name="settings_about">About</string>
+
+    <!-- Security -->
+    <string name="security_app_lock">App Lock</string>
+    <string name="security_biometric">Biometric Unlock</string>
+    <string name="security_set_password">Set Master Password</string>
+    <string name="security_change_password">Change Master Password</string>
+
+    <!-- Sync -->
+    <string name="sync_provider_github">GitHub Gist</string>
+    <string name="sync_provider_google">Google Drive</string>
+    <string name="sync_provider_onedrive">OneDrive</string>
+    <string name="sync_provider_webdav">WebDAV</string>
+    <string name="sync_provider_s3">S3 Compatible</string>
+    <string name="sync_status_idle">Idle</string>
+    <string name="sync_status_syncing">Syncing…</string>
+    <string name="sync_status_error">Sync Error</string>
+
+    <!-- Common -->
+    <string name="btn_connect">Connect</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="btn_save">Save</string>
+    <string name="btn_delete">Delete</string>
+    <string name="btn_ok">OK</string>
+    <string name="btn_done">Done</string>
+
+    <!-- Errors -->
+    <string name="error_ssh_connection">Connection failed: %s</string>
+    <string name="error_ssh_auth">Authentication failed</string>
+    <string name="error_ssh_disconnected">Connection lost</string>
+    <string name="error_sync_decryption">Decryption failed — master password may differ from desktop</string>
+    <string name="error_network">Network error: %s</string>
+</resources>
