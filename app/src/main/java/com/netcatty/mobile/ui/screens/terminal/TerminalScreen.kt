@@ -20,8 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
@@ -29,7 +27,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.netcatty.mobile.domain.model.Host
 
 private val TERMINAL_BG = Color(0xFF1E1E2E)
 private val TERMINAL_FG = Color(0xFFCDD6F4)
@@ -37,10 +34,18 @@ private val TERMINAL_FG = Color(0xFFCDD6F4)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TerminalScreen(
+    connectHostId: String? = null,
     viewModel: TerminalViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var inputText by remember { mutableStateOf("") }
+
+    // Auto-connect when navigating from Vault with a hostId
+    LaunchedEffect(connectHostId) {
+        if (connectHostId != null) {
+            viewModel.connectToHost(connectHostId)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -83,7 +88,22 @@ fun TerminalScreen(
                 .weight(1f)
                 .background(TERMINAL_BG)
         ) {
-            if (uiState.sessions.isEmpty()) {
+            if (uiState.isConnecting) {
+                // Connecting state
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(color = TERMINAL_FG)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Connecting…",
+                        color = TERMINAL_FG.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            } else if (uiState.sessions.isEmpty()) {
                 // Empty state
                 Column(
                     modifier = Modifier.fillMaxSize(),

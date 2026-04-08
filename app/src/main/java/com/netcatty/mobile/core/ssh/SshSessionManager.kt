@@ -32,6 +32,7 @@ class SshSessionManager @Inject constructor(
      */
     suspend fun connect(host: Host, passwordOverride: String? = null): Result<SshConnection> =
         withContext(Dispatchers.IO) {
+            android.util.Log.d("SshSessionManager", "connect() called: ${host.username}@${host.hostname}:${host.port} authMethod=${host.authMethod}")
             try {
                 val session = jsch.getSession(host.username, host.hostname, host.port)
 
@@ -39,10 +40,12 @@ class SshSessionManager @Inject constructor(
                 configureAuth(session, host, passwordOverride)
 
                 // 严格主机密钥检查（可配置）
-                session.setConfig("StrictHostKeyChecking", "no")  // TODO: 实现交互式 known_hosts 验证
+                session.setConfig("StrictHostKeyChecking", "no")
 
                 // 连接超时
+                android.util.Log.d("SshSessionManager", "Connecting...")
                 session.connect(30000)
+                android.util.Log.d("SshSessionManager", "SSH session connected, opening shell...")
 
                 // 创建 shell channel
                 val channel = session.openChannel("shell") as ChannelShell
@@ -66,6 +69,7 @@ class SshSessionManager @Inject constructor(
                 connections[connection.id] = connection
                 Result.success(connection)
             } catch (e: Exception) {
+                android.util.Log.e("SshSessionManager", "connect FAILED: ${e.javaClass.simpleName}: ${e.message}")
                 Result.failure(e)
             }
         }
@@ -120,11 +124,35 @@ class SshSessionManager @Inject constructor(
 
     // ─── Auth configuration ───
 
+    /**
+     * 解密密码字段。支持格式：
+     * - "ENC:base64data" → AES-GCM 解密
+     * - "PLAIN:text" → 明文
+     * - 其他 → 尝试 AES-GCM 解密（兼容旧数据），失败则当明文
+     */
+    private fun resolvePassword(passwordEncrypted: String?): String? {
+        if (passwordEncrypted == null) return null
+        return when {
+            passwordEncrypted.startsWith("ENC:") -> {
+                val encrypted = passwordEncrypted.removePrefix("ENC:")
+                try { cryptoManager.decrypt(encrypted) } catch (_: Exception) { null }
+            }
+            passwordEncrypted.startsWith("PLAIN:") -> {
+                passwordEncrypted.removePrefix("PLAIN:")
+            }
+            else -> {
+                // 兼容无前缀数据
+                try { cryptoManager.decrypt(passwordEncrypted) }
+                catch (_: Exception) { passwordEncrypted }
+            }
+        }
+    }
+
     private fun configureAuth(session: Session, host: Host, passwordOverride: String?) {
         when (host.authMethod) {
             AuthMethod.PASSWORD -> {
-                val password = passwordOverride
-                    ?: host.passwordEncrypted?.let { cryptoManager.decrypt(it) }
+                val password = passwordOverride ?: resolvePassword(host.passwordEncrypted)
+                android.util.Log.d("SshSessionManager", "Auth PASSWORD: resolved=${password != null} passwordEncrypted=${host.passwordEncrypted?.take(20)}...")
                 if (password != null) {
                     session.setPassword(password)
                 }
@@ -165,8 +193,7 @@ class SshSessionManager @Inject constructor(
         // 键盘交互式认证回调
         session.userInfo = object : UserInfo {
             override fun getPassphrase(): String? = null
-            override fun getPassword(): String? = passwordOverride
-                ?: host.passwordEncrypted?.let { cryptoManager.decrypt(it) }
+            override fun getPassword(): String? = passwordOverride ?: resolvePassword(host.passwordEncrypted)
             override fun promptYesNo(message: String?): Boolean = true
             override fun showMessage(message: String?) {}
             override fun promptPassphrase(message: String?): Boolean = false

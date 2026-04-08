@@ -2,12 +2,8 @@ package com.netcatty.mobile.ui.screens.terminal
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.netcatty.mobile.core.crypto.FieldCryptoManager
-import com.netcatty.mobile.core.crypto.SessionKeyHolder
-import com.netcatty.mobile.core.ssh.SshConnection
 import com.netcatty.mobile.core.ssh.SshSessionManager
 import com.netcatty.mobile.core.terminal.NetcattyTerminalSession
-import com.netcatty.mobile.domain.model.Host
 import com.netcatty.mobile.domain.repository.HostRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -21,8 +17,7 @@ import javax.inject.Inject
 @HiltViewModel
 class TerminalViewModel @Inject constructor(
     private val sshSessionManager: SshSessionManager,
-    private val hostRepository: HostRepository,
-    private val fieldCryptoManager: FieldCryptoManager
+    private val hostRepository: HostRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TerminalUiState())
@@ -34,17 +29,20 @@ class TerminalViewModel @Inject constructor(
      * 连接到主机并创建新的终端 Tab
      */
     fun connectToHost(hostId: String) {
+        android.util.Log.d("TerminalVM", "connectToHost called: hostId=$hostId")
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isConnecting = true, connectionError = null) }
 
             val host = hostRepository.getHostById(hostId)
             if (host == null) {
+                android.util.Log.e("TerminalVM", "Host not found: $hostId")
                 _uiState.update { it.copy(isConnecting = false, connectionError = "Host not found") }
                 return@launch
             }
+            android.util.Log.d("TerminalVM", "Host found: ${host.username}@${host.hostname}:${host.port}")
 
             // 解密密码
-            val result = sshSessionManager.connect(host, passwordOverride = getDecryptedPassword(host))
+            val result = sshSessionManager.connect(host)
             result.fold(
                 onSuccess = { connection ->
                     val tab = TerminalTab(
@@ -104,19 +102,6 @@ class TerminalViewModel @Inject constructor(
                     }
                 }
             )
-        }
-    }
-
-    /**
-     * 解密主机密码，返回明文
-     */
-    private fun getDecryptedPassword(host: Host): String? {
-        if (host.passwordEncrypted == null) return null
-        return try {
-            fieldCryptoManager.decrypt(host.passwordEncrypted)
-        } catch (e: Exception) {
-            // 可能已是明文（首次未加密保存）
-            host.passwordEncrypted
         }
     }
 

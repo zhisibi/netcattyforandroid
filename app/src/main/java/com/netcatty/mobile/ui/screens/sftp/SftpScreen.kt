@@ -19,9 +19,17 @@ import com.netcatty.mobile.core.ssh.SftpClient
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SftpScreen(
+    connectHostId: String? = null,
     viewModel: SftpViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Auto-connect when navigating from Vault with a hostId
+    LaunchedEffect(connectHostId) {
+        if (connectHostId != null) {
+            viewModel.connectToHost(connectHostId)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(

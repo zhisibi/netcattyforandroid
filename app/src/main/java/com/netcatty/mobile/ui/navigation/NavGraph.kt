@@ -9,14 +9,12 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -29,9 +27,7 @@ import com.netcatty.mobile.ui.screens.aichat.AiChatScreen
 import com.netcatty.mobile.ui.screens.settings.SettingsScreen
 import com.netcatty.mobile.ui.screens.sftp.SftpScreen
 import com.netcatty.mobile.ui.screens.terminal.TerminalScreen
-import com.netcatty.mobile.ui.screens.terminal.TerminalViewModel
 import com.netcatty.mobile.ui.screens.unlock.UnlockScreen
-import com.netcatty.mobile.ui.screens.unlock.UnlockViewModel
 import com.netcatty.mobile.ui.screens.vault.VaultScreen
 
 object Routes {
@@ -40,6 +36,7 @@ object Routes {
     const val TERMINAL = "terminal"
     const val TERMINAL_HOST = "terminal/{hostId}"
     const val SFTP = "sftp"
+    const val SFTP_HOST = "sftp/{hostId}"
     const val AI_CHAT = "ai_chat"
     const val SETTINGS = "settings"
 }
@@ -64,10 +61,13 @@ fun NetcattyNavHost(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // Unlock gate: show unlock if not unlocked
     var isUnlocked by rememberSaveable { mutableStateOf(false) }
 
-    val showBottomBar = isUnlocked && currentDestination?.route != Routes.TERMINAL_HOST
+    // Hide bottom bar on detail screens (host-specific terminal/sftp)
+    val currentRoute = currentDestination?.route
+    val showBottomBar = isUnlocked && currentRoute !in setOf(
+        Routes.TERMINAL_HOST, Routes.SFTP_HOST, Routes.UNLOCK
+    )
 
     Scaffold(
         bottomBar = {
@@ -99,54 +99,53 @@ fun NetcattyNavHost(navController: NavHostController) {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Routes.UNLOCK) {
-                val unlockVm: UnlockViewModel = hiltViewModel()
-                LaunchedEffect(unlockVm.uiState.value.isUnlocked) {
-                    if (unlockVm.uiState.value.isUnlocked) {
-                        isUnlocked = true
-                        navController.navigate(Routes.VAULT) {
-                            popUpTo(Routes.UNLOCK) { inclusive = true }
-                        }
-                    }
-                }
                 UnlockScreen(
                     onUnlocked = {
                         isUnlocked = true
                         navController.navigate(Routes.VAULT) {
                             popUpTo(Routes.UNLOCK) { inclusive = true }
                         }
-                    },
-                    viewModel = unlockVm
+                    }
                 )
             }
 
             composable(Routes.VAULT) {
                 VaultScreen(
-                    onHostClick = { hostId ->
+                    onConnectSsh = { hostId ->
                         navController.navigate("terminal/$hostId")
+                    },
+                    onConnectSftp = { hostId ->
+                        navController.navigate("sftp/$hostId")
                     }
                 )
             }
 
+            // Empty terminal tab (no host selected)
             composable(Routes.TERMINAL) {
                 TerminalScreen()
             }
 
+            // Terminal with specific host — auto-connect
             composable(
                 route = Routes.TERMINAL_HOST,
                 arguments = listOf(navArgument("hostId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val hostId = backStackEntry.arguments?.getString("hostId")
-                val terminalVm: TerminalViewModel = hiltViewModel()
-                LaunchedEffect(hostId) {
-                    if (hostId != null && terminalVm.uiState.value.sessions.none { it.hostId == hostId }) {
-                        terminalVm.connectToHost(hostId)
-                    }
-                }
-                TerminalScreen(viewModel = terminalVm)
+                val hostId = backStackEntry.arguments?.getString("hostId") ?: return@composable TerminalScreen()
+                TerminalScreen(connectHostId = hostId)
             }
 
+            // Empty SFTP tab
             composable(Routes.SFTP) {
                 SftpScreen()
+            }
+
+            // SFTP with specific host — auto-connect
+            composable(
+                route = Routes.SFTP_HOST,
+                arguments = listOf(navArgument("hostId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val hostId = backStackEntry.arguments?.getString("hostId") ?: return@composable SftpScreen()
+                SftpScreen(connectHostId = hostId)
             }
 
             composable(Routes.AI_CHAT) {

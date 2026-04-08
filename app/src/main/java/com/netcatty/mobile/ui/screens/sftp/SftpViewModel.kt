@@ -2,8 +2,11 @@ package com.netcatty.mobile.ui.screens.sftp
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.netcatty.mobile.core.crypto.FieldCryptoManager
 import com.netcatty.mobile.core.ssh.SftpClient
+import com.netcatty.mobile.core.ssh.SshConnection
 import com.netcatty.mobile.core.ssh.SshSessionManager
+import com.netcatty.mobile.domain.model.Host
 import com.netcatty.mobile.domain.repository.HostRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -17,19 +20,24 @@ import javax.inject.Inject
 @HiltViewModel
 class SftpViewModel @Inject constructor(
     private val sshSessionManager: SshSessionManager,
-    private val hostRepository: HostRepository
+    private val hostRepository: HostRepository,
+    private val fieldCryptoManager: FieldCryptoManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SftpUiState())
     val uiState: StateFlow<SftpUiState> = _uiState.asStateFlow()
 
     private var sftpClient: SftpClient? = null
-    private var currentSessionId: String? = null
+    private var sshConnectionId: String? = null
+    private var connectedHostId: String? = null
 
     /**
-     * 连接到指定主机的 SFTP
+     * 连接到指定主机：先建SSH会话，再开SFTP channel
      */
     fun connectToHost(hostId: String) {
+        android.util.Log.d("SftpVM", "connectToHost called: hostId=$hostId")
+        if (connectedHostId == hostId && sftpClient != null) return  // 已连接
+
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
@@ -40,24 +48,23 @@ class SftpViewModel @Inject constructor(
             }
 
             try {
-                // 复用已有 SSH session 或新建
-                val existingSessionId = sshSessionManager.getActiveSessionIds().firstOrNull()
-                val connection = existingSessionId?.let { sshSessionManager.getConnection(it) }
+                // 1. 先建SSH连接
+                val sshResult = sshSessionManager.connect(host)
+                val connection = sshResult.getOrThrow()
 
-                if (connection != null) {
-                    currentSessionId = existingSessionId
-                    val client = SftpClient(connection.session)
-                    client.connect()
-                    sftpClient = client
+                sshConnectionId = connection.id
+                connectedHostId = hostId
 
-                    val homeDir = client.getHomeDir()
-                    _uiState.update { it.copy(isConnected = true, remotePath = homeDir) }
-                    listDirectory(homeDir)
-                } else {
-                    _uiState.update { it.copy(isLoading = false, error = "No active SSH session — connect from Vault first") }
-                }
+                // 2. 在SSH session上开SFTP channel
+                val client = SftpClient(connection.session)
+                client.connect()
+                sftpClient = client
+
+                val homeDir = client.getHomeDir()
+                _uiState.update { it.copy(isConnected = true, remotePath = homeDir, isLoading = false) }
+                listDirectory(homeDir)
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message ?: "SFTP connection failed") }
+                _uiState.update { it.copy(isLoading = false, error = e.message ?: "Connection failed") }
             }
         }
     }
@@ -97,5 +104,6 @@ class SftpViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         sftpClient?.disconnect()
+        sshConnectionId?.let { sshSessionManager.disconnect(it) }
     }
 }

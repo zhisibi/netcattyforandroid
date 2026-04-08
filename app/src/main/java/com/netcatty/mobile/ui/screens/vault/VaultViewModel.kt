@@ -113,8 +113,10 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch {
             val port = form.port.toIntOrNull() ?: 22
             val tags = form.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+
+            // 密码处理：尝试加密，失败则存明文
             val passwordEncrypted = if (form.authMethod == AuthMethod.PASSWORD && form.password.isNotBlank()) {
-                if (fieldCryptoManager.isKeyAvailable()) fieldCryptoManager.encrypt(form.password) else form.password
+                encryptPassword(form.password)
             } else null
 
             val existingHost = _uiState.value.editingHost
@@ -133,6 +135,22 @@ class VaultViewModel @Inject constructor(
 
             hostRepository.insertHost(host)
             hideAddHostDialog()
+        }
+    }
+
+    /**
+     * 加密密码。如果密钥不可用（未解锁），存明文。
+     * 格式：ENC:base64（加密）或 PLAIN:text（明文）
+     */
+    private fun encryptPassword(password: String): String {
+        return try {
+            if (fieldCryptoManager.isKeyAvailable()) {
+                "ENC:${fieldCryptoManager.encrypt(password)}"
+            } else {
+                "PLAIN:$password"
+            }
+        } catch (e: Exception) {
+            "PLAIN:$password"
         }
     }
 

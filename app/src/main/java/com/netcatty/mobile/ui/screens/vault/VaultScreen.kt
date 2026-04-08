@@ -1,6 +1,5 @@
 package com.netcatty.mobile.ui.screens.vault
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,7 +23,8 @@ import com.netcatty.mobile.domain.model.Host
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
-    onHostClick: (String) -> Unit = {},
+    onConnectSsh: (String) -> Unit = {},
+    onConnectSftp: (String) -> Unit = {},
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -124,7 +124,6 @@ fun VaultScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Pinned hosts
                     if (uiState.pinnedHosts.isNotEmpty()) {
                         item {
                             Text(
@@ -137,7 +136,8 @@ fun VaultScreen(
                         items(uiState.pinnedHosts, key = { "pinned-${it.id}" }) { host ->
                             HostCard(
                                 host = host,
-                                onClick = { onHostClick(host.id) },
+                                onConnectSsh = { onConnectSsh(host.id) },
+                                onConnectSftp = { onConnectSftp(host.id) },
                                 onEdit = { viewModel.showEditHostDialog(host) },
                                 onDelete = { showDeleteConfirm = host },
                                 onPin = { viewModel.togglePin(host) }
@@ -145,7 +145,6 @@ fun VaultScreen(
                         }
                     }
 
-                    // All hosts
                     if (uiState.unpinnedHosts.isNotEmpty()) {
                         if (uiState.pinnedHosts.isNotEmpty()) {
                             item {
@@ -160,7 +159,8 @@ fun VaultScreen(
                         items(uiState.unpinnedHosts, key = { it.id }) { host ->
                             HostCard(
                                 host = host,
-                                onClick = { onHostClick(host.id) },
+                                onConnectSsh = { onConnectSsh(host.id) },
+                                onConnectSftp = { onConnectSftp(host.id) },
                                 onEdit = { viewModel.showEditHostDialog(host) },
                                 onDelete = { showDeleteConfirm = host },
                                 onPin = { viewModel.togglePin(host) }
@@ -212,7 +212,8 @@ fun VaultScreen(
 @Composable
 fun HostCard(
     host: Host,
-    onClick: () -> Unit,
+    onConnectSsh: () -> Unit,
+    onConnectSftp: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onPin: () -> Unit
@@ -220,66 +221,104 @@ fun HostCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick),
+            .clip(RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         )
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon
-            Surface(
-                modifier = Modifier.size(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Row 1: Icon + Info + Pin/Edit/Delete
+            Row(
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("🐧", modifier = Modifier.padding(4.dp))
+                // Icon
+                Surface(
+                    modifier = Modifier.size(40.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("🐧", modifier = Modifier.padding(4.dp))
+                    }
                 }
-            }
 
-            Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-            // Info
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = host.label,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${host.username}@${host.hostname}:${host.port}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (host.group != null) {
+                // Info
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = host.group,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1
+                        text = host.label,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${host.username}@${host.hostname}:${host.port}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (host.group != null) {
+                        Text(
+                            text = host.group,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Action buttons: Pin, Edit, Delete
+                IconButton(onClick = onPin, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Default.PushPin,
+                        contentDescription = if (host.pinned) "Unpin" else "Pin",
+                        tint = if (host.pinned) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
+                IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp))
+                }
+                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp))
+                }
             }
 
-            // Actions
-            IconButton(onClick = onPin, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    if (host.pinned) Icons.Default.PushPin else Icons.Default.PushPin,
-                    contentDescription = if (host.pinned) "Unpin" else "Pin",
-                    tint = if (host.pinned) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Row 2: SSH + SFTP connect buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // SSH button
+                OutlinedButton(
+                    onClick = onConnectSsh,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("SSH", style = MaterialTheme.typography.labelMedium)
+                }
+
+                // SFTP button
+                OutlinedButton(
+                    onClick = onConnectSftp,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("SFTP", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }
