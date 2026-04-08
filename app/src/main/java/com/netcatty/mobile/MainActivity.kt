@@ -18,6 +18,11 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Ensure adjustResize works properly on API 30+
+        // By default, decor fits system windows so adjustResize works
+        // No need for enableEdgeToEdge which breaks it
+
         setContent {
             NetcattyTheme {
                 Surface(
