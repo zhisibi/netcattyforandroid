@@ -15,6 +15,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    onVaultLocked: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -74,7 +75,10 @@ fun SettingsScreen(
                     headlineContent = { Text("Lock Vault") },
                     supportingContent = { Text("Clear session key from memory") },
                     leadingContent = { Icon(Icons.Default.LockClock, contentDescription = null) },
-                    modifier = Modifier.clickable { viewModel.lockVault() }
+                    modifier = Modifier.clickable {
+                        viewModel.lockVault()
+                        onVaultLocked()
+                    }
                 )
             }
 

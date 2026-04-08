@@ -1,11 +1,15 @@
 package com.netcatty.mobile.ui.screens.terminal
 
+import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.netcatty.mobile.core.ssh.SshSessionManager
 import com.netcatty.mobile.core.terminal.NetcattyTerminalSession
 import com.netcatty.mobile.domain.repository.HostRepository
+import com.netcatty.mobile.service.SshConnectionService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +20,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class TerminalViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val sshSessionManager: SshSessionManager,
     private val hostRepository: HostRepository
 ) : ViewModel() {
@@ -76,6 +81,9 @@ class TerminalViewModel @Inject constructor(
                         )
                     }
 
+                    // 启动前台服务保活
+                    startForegroundService(host.label)
+
                     // 创建终端会话并启动读取
                     val terminalSession = NetcattyTerminalSession(
                         connection = connection,
@@ -99,6 +107,7 @@ class TerminalViewModel @Inject constructor(
                                 }
                                 state.copy(sessions = sessions)
                             }
+                            stopForegroundServiceIfNeeded()
                         }
                     )
                     terminalSessions[connection.id] = terminalSession
@@ -163,6 +172,7 @@ class TerminalViewModel @Inject constructor(
             }
             state.copy(sessions = newSessions, activeSessionId = newActiveId)
         }
+        stopForegroundServiceIfNeeded()
     }
 
     fun resize(cols: Int, rows: Int) {
@@ -174,11 +184,35 @@ class TerminalViewModel @Inject constructor(
         _uiState.update { it.copy(connectionError = null) }
     }
 
+    // ─── Foreground Service Integration ───
+
+    private fun startForegroundService(hostLabel: String) {
+        val intent = Intent(appContext, SshConnectionService::class.java).apply {
+            action = SshConnectionService.ACTION_CONNECT
+            putExtra(SshConnectionService.EXTRA_HOST_LABEL, hostLabel)
+        }
+        appContext.startForegroundService(intent)
+    }
+
+    private fun stopForegroundServiceIfNeeded() {
+        if (_uiState.value.sessions.none { it.status == TerminalStatus.CONNECTED }) {
+            val intent = Intent(appContext, SshConnectionService::class.java).apply {
+                action = SshConnectionService.ACTION_DISCONNECT
+            }
+            appContext.startService(intent)
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         terminalSessions.values.forEach { it.close() }
         terminalSessions.clear()
         sshSessionManager.disconnectAll()
+        // Stop foreground service
+        val intent = Intent(appContext, SshConnectionService::class.java).apply {
+            action = SshConnectionService.ACTION_DISCONNECT
+        }
+        appContext.startService(intent)
     }
 }
 

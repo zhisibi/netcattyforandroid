@@ -15,6 +15,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -63,98 +64,126 @@ fun NetcattyNavHost(navController: NavHostController) {
 
     var isUnlocked by rememberSaveable { mutableStateOf(false) }
 
+    // Read dark mode from settings
+    val context = LocalContext.current
+    val darkMode = context.getSharedPreferences("netcatty_settings", android.content.Context.MODE_PRIVATE)
+        .getBoolean("dark_mode", true)
+
     // Hide bottom bar on detail screens (host-specific terminal/sftp)
     val currentRoute = currentDestination?.route
     val showBottomBar = isUnlocked && currentRoute !in setOf(
         Routes.TERMINAL_HOST, Routes.SFTP_HOST, Routes.UNLOCK
     )
 
-    Scaffold(
-        bottomBar = {
-            if (showBottomBar) {
-                NavigationBar {
-                    bottomNavItems.forEach { item ->
-                        NavigationBarItem(
-                            icon = { Icon(item.icon, contentDescription = item.label) },
-                            label = { Text(item.label) },
-                            selected = currentDestination?.hierarchy?.any { it.route == item.route } == true,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+    NetcattyTheme(darkTheme = darkMode) {
+        Scaffold(
+            bottomBar = {
+                if (showBottomBar) {
+                    NavigationBar {
+                        bottomNavItems.forEach { item ->
+                            NavigationBarItem(
+                                icon = { Icon(item.icon, contentDescription = item.label) },
+                                label = { Text(item.label) },
+                                selected = currentDestination?.hierarchy?.any { it.route == item.route } == true,
+                                onClick = {
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = if (isUnlocked) Routes.VAULT else Routes.UNLOCK,
-            modifier = Modifier.padding(innerPadding)
-        ) {
-            composable(Routes.UNLOCK) {
-                UnlockScreen(
-                    onUnlocked = {
-                        isUnlocked = true
-                        navController.navigate(Routes.VAULT) {
-                            popUpTo(Routes.UNLOCK) { inclusive = true }
+        ) { innerPadding ->
+            NavHost(
+                navController = navController,
+                startDestination = if (isUnlocked) Routes.VAULT else Routes.UNLOCK,
+                modifier = Modifier.padding(innerPadding)
+            ) {
+                composable(Routes.UNLOCK) {
+                    UnlockScreen(
+                        onUnlocked = {
+                            isUnlocked = true
+                            navController.navigate(Routes.VAULT) {
+                                popUpTo(Routes.UNLOCK) { inclusive = true }
+                            }
                         }
-                    }
-                )
-            }
+                    )
+                }
 
-            composable(Routes.VAULT) {
-                VaultScreen(
-                    onConnectSsh = { hostId ->
-                        navController.navigate("terminal/$hostId")
-                    },
-                    onConnectSftp = { hostId ->
-                        navController.navigate("sftp/$hostId")
-                    }
-                )
-            }
+                composable(Routes.VAULT) {
+                    VaultScreen(
+                        onConnectSsh = { hostId ->
+                            navController.navigate("terminal/$hostId")
+                        },
+                        onConnectSftp = { hostId ->
+                            navController.navigate("sftp/$hostId")
+                        }
+                    )
+                }
 
-            // Empty terminal tab (no host selected)
-            composable(Routes.TERMINAL) {
-                TerminalScreen()
-            }
+                // Empty terminal tab (no host selected)
+                composable(Routes.TERMINAL) {
+                    TerminalScreen()
+                }
 
-            // Terminal with specific host — auto-connect
-            composable(
-                route = Routes.TERMINAL_HOST,
-                arguments = listOf(navArgument("hostId") { type = NavType.StringType })
-            ) { backStackEntry ->
-                val hostId = backStackEntry.arguments?.getString("hostId") ?: return@composable TerminalScreen()
-                TerminalScreen(connectHostId = hostId)
-            }
+                // Terminal with specific host — auto-connect
+                composable(
+                    route = Routes.TERMINAL_HOST,
+                    arguments = listOf(navArgument("hostId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val hostId = backStackEntry.arguments?.getString("hostId") ?: return@composable TerminalScreen()
+                    TerminalScreen(connectHostId = hostId)
+                }
 
-            // Empty SFTP tab
-            composable(Routes.SFTP) {
-                SftpScreen()
-            }
+                // Empty SFTP tab
+                composable(Routes.SFTP) {
+                    SftpScreen()
+                }
 
-            // SFTP with specific host — auto-connect
-            composable(
-                route = Routes.SFTP_HOST,
-                arguments = listOf(navArgument("hostId") { type = NavType.StringType })
-            ) { backStackEntry ->
-                val hostId = backStackEntry.arguments?.getString("hostId") ?: return@composable SftpScreen()
-                SftpScreen(connectHostId = hostId)
-            }
+                // SFTP with specific host — auto-connect
+                composable(
+                    route = Routes.SFTP_HOST,
+                    arguments = listOf(navArgument("hostId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val hostId = backStackEntry.arguments?.getString("hostId") ?: return@composable SftpScreen()
+                    SftpScreen(connectHostId = hostId)
+                }
 
-            composable(Routes.AI_CHAT) {
-                AiChatScreen()
-            }
+                composable(Routes.AI_CHAT) {
+                    AiChatScreen()
+                }
 
-            composable(Routes.SETTINGS) {
-                SettingsScreen()
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(
+                        onVaultLocked = {
+                            isUnlocked = false
+                            navController.navigate(Routes.UNLOCK) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    )
+                }
             }
         }
     }
+}
+
+/**
+ * Wrapper to apply theme from settings
+ */
+@Composable
+private fun NetcattyTheme(
+    darkTheme: Boolean,
+    content: @Composable () -> Unit
+) {
+    com.netcatty.mobile.ui.theme.NetcattyTheme(
+        darkTheme = darkTheme,
+        content = content
+    )
 }

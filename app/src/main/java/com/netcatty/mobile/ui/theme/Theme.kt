@@ -4,7 +4,9 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.sp
 
 private val LightColorScheme = lightColorScheme(
     primary = md_theme_light_primary,
@@ -57,6 +59,20 @@ private val DarkColorScheme = darkColorScheme(
     surfaceVariant = md_theme_dark_surfaceVariant,
     onSurfaceVariant = md_theme_dark_onSurfaceVariant,
 )
+
+/**
+ * Global terminal configuration — read from SharedPreferences
+ */
+object TerminalConfig {
+    @ReadOnlyComposable
+    @Composable
+    fun fontSize(): androidx.compose.ui.unit.TextUnit {
+        val context = LocalContext.current
+        val size = context.getSharedPreferences("netcatty_settings", android.content.Context.MODE_PRIVATE)
+            .getInt("terminal_font_size", 13)
+        return size.sp
+    }
+}
 
 @Composable
 fun NetcattyTheme(

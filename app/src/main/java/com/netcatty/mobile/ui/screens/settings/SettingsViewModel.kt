@@ -14,6 +14,7 @@ import javax.inject.Inject
 data class SettingsUiState(
     val hasMasterPassword: Boolean = false,
     val biometricEnabled: Boolean = false,
+    val biometricAvailable: Boolean = false,
     val darkMode: Boolean = true,
     val terminalFontSize: Int = 13,
     val syncProvider: String? = null,
@@ -49,13 +50,41 @@ class SettingsViewModel @Inject constructor(
 
     fun changePassword(oldPassword: String, newPassword: String): Boolean {
         val result = sessionKeyHolder.changePassword(oldPassword, newPassword)
+        if (result) {
+            // Update biometric recovery password if biometric is enabled
+            if (_uiState.value.biometricEnabled) {
+                saveBiometricRecoveryPassword(newPassword)
+            }
+        }
         refreshState()
         return result
     }
 
-    fun setBiometricEnabled(enabled: Boolean) {
+    fun setBiometricEnabled(enabled: Boolean): Boolean {
+        if (enabled) {
+            // Check if biometric is available
+            val biometricManager = androidx.biometric.BiometricManager.from(context)
+            val canAuth = biometricManager.canAuthenticate(
+                androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                        androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
+            )
+            if (canAuth != androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS) {
+                return false  // Can't enable biometric
+            }
+
+            // Save current master password for biometric recovery
+            val masterPassword = sessionKeyHolder.getMasterPassword()
+            if (masterPassword != null) {
+                saveBiometricRecoveryPassword(masterPassword)
+            }
+        } else {
+            // Remove saved biometric recovery password
+            removeBiometricRecoveryPassword()
+        }
+
         prefs.edit().putBoolean(KEY_BIOMETRIC, enabled).apply()
         _uiState.update { it.copy(biometricEnabled = enabled) }
+        return true
     }
 
     fun setDarkMode(enabled: Boolean) {
@@ -77,7 +106,8 @@ class SettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 hasMasterPassword = sessionKeyHolder.hasMasterPassword(),
-                vaultLocked = !sessionKeyHolder.isUnlocked()
+                vaultLocked = !sessionKeyHolder.isUnlocked(),
+                biometricAvailable = canUseBiometric()
             )
         }
     }
@@ -87,8 +117,35 @@ class SettingsViewModel @Inject constructor(
             darkMode = prefs.getBoolean(KEY_DARK_MODE, true),
             terminalFontSize = prefs.getInt(KEY_TERMINAL_FONT_SIZE, 13),
             biometricEnabled = prefs.getBoolean(KEY_BIOMETRIC, false),
+            biometricAvailable = canUseBiometric(),
             hasMasterPassword = sessionKeyHolder.hasMasterPassword(),
             vaultLocked = !sessionKeyHolder.isUnlocked()
         )
+    }
+
+    private fun canUseBiometric(): Boolean {
+        val biometricManager = androidx.biometric.BiometricManager.from(context)
+        return biometricManager.canAuthenticate(
+            androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                    androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
+        ) == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
+    }
+
+    /**
+     * Save master password for biometric recovery.
+     * Uses EncryptedSharedPreferences (protected by Android Keystore).
+     */
+    private fun saveBiometricRecoveryPassword(password: String) {
+        val securePrefs = context.getSharedPreferences("netcatty_secure_prefs", Context.MODE_PRIVATE)
+        securePrefs.edit()
+            .putString("biometric_recovery_password", password)
+            .apply()
+    }
+
+    private fun removeBiometricRecoveryPassword() {
+        val securePrefs = context.getSharedPreferences("netcatty_secure_prefs", Context.MODE_PRIVATE)
+        securePrefs.edit()
+            .remove("biometric_recovery_password")
+            .apply()
     }
 }
