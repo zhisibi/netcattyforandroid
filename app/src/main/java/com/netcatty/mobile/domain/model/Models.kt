@@ -1,7 +1,9 @@
 package com.netcatty.mobile.domain.model
 
+import kotlinx.serialization.Serializable
 import java.util.UUID
 
+@Serializable
 data class Snippet(
     val id: String = UUID.randomUUID().toString(),
     val label: String,
@@ -12,8 +14,10 @@ data class Snippet(
     val noAutoRun: Boolean = false
 )
 
+@Serializable
 enum class PortForwardingType { LOCAL, REMOTE, DYNAMIC }
 
+@Serializable
 data class PortForwardingRule(
     val id: String = UUID.randomUUID().toString(),
     val label: String,
@@ -27,8 +31,10 @@ data class PortForwardingRule(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+@Serializable
 enum class ThemeType { DARK, LIGHT }
 
+@Serializable
 data class TerminalTheme(
     val id: String,
     val name: String,
@@ -37,6 +43,7 @@ data class TerminalTheme(
     val colors: TerminalColors
 )
 
+@Serializable
 data class TerminalColors(
     val background: String = "#1e1e2e",
     val foreground: String = "#cdd6f4",
@@ -60,6 +67,7 @@ data class TerminalColors(
     val brightWhite: String = "#a6adc8"
 )
 
+@Serializable
 data class KnownHost(
     val id: String = UUID.randomUUID().toString(),
     val hostname: String,
@@ -69,6 +77,7 @@ data class KnownHost(
     val discoveredAt: Long = System.currentTimeMillis()
 )
 
+@Serializable
 data class HostGroup(
     val name: String,
     val path: String,

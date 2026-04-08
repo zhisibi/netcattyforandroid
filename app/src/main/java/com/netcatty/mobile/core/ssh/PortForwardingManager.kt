@@ -61,9 +61,13 @@ class PortForwardingManager @Inject constructor(
                     )
                 }
                 PortForwardingType.DYNAMIC -> {
-                    connection.session.setPortForwardingD(
+                    // Dynamic (SOCKS) port forwarding via setPortForwardingL
+                    // In JSch, dynamic forwarding is done through setPortForwardingL with a null remote
+                    connection.session.setPortForwardingL(
                         rule.bindAddress,
-                        rule.localPort
+                        rule.localPort,
+                        null,
+                        0
                     )
                 }
             }

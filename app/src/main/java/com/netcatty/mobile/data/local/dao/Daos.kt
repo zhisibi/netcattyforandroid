@@ -2,6 +2,9 @@ package com.netcatty.mobile.data.local.dao
 
 import androidx.room.*
 import com.netcatty.mobile.data.local.entity.HostEntity
+import com.netcatty.mobile.data.local.entity.PortForwardingRuleEntity
+import com.netcatty.mobile.data.local.entity.SshKeyEntity
+import com.netcatty.mobile.data.local.entity.SnippetEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -37,29 +40,47 @@ interface HostDao {
 @Dao
 interface SshKeyDao {
     @Query("SELECT * FROM ssh_keys ORDER BY created DESC")
-    fun getAll(): Flow<List<com.netcatty.mobile.data.local.entity.SshKeyEntity>>
+    fun getAll(): Flow<List<SshKeyEntity>>
 
     @Query("SELECT * FROM ssh_keys WHERE id = :id")
-    suspend fun getById(id: String): com.netcatty.mobile.data.local.entity.SshKeyEntity?
+    suspend fun getById(id: String): SshKeyEntity?
 
     @Upsert
-    suspend fun upsert(key: com.netcatty.mobile.data.local.entity.SshKeyEntity)
+    suspend fun upsert(key: SshKeyEntity)
 
     @Delete
-    suspend fun delete(key: com.netcatty.mobile.data.local.entity.SshKeyEntity)
+    suspend fun delete(key: SshKeyEntity)
 }
 
 @Dao
 interface SnippetDao {
     @Query("SELECT * FROM snippets ORDER BY label ASC")
-    fun getAll(): Flow<List<com.netcatty.mobile.data.local.entity.SnippetEntity>>
+    fun getAll(): Flow<List<SnippetEntity>>
 
     @Query("SELECT * FROM snippets WHERE id = :id")
-    suspend fun getById(id: String): com.netcatty.mobile.data.local.entity.SnippetEntity?
+    suspend fun getById(id: String): SnippetEntity?
 
     @Upsert
-    suspend fun upsert(snippet: com.netcatty.mobile.data.local.entity.SnippetEntity)
+    suspend fun upsert(snippet: SnippetEntity)
 
     @Delete
-    suspend fun delete(snippet: com.netcatty.mobile.data.local.entity.SnippetEntity)
+    suspend fun delete(snippet: SnippetEntity)
+}
+
+@Dao
+interface PortForwardingRuleDao {
+    @Query("SELECT * FROM port_forwarding_rules ORDER BY label ASC")
+    fun getAll(): Flow<List<PortForwardingRuleEntity>>
+
+    @Query("SELECT * FROM port_forwarding_rules WHERE hostId = :hostId")
+    fun getByHostId(hostId: String): Flow<List<PortForwardingRuleEntity>>
+
+    @Query("SELECT * FROM port_forwarding_rules WHERE id = :id")
+    suspend fun getById(id: String): PortForwardingRuleEntity?
+
+    @Upsert
+    suspend fun upsert(rule: PortForwardingRuleEntity)
+
+    @Delete
+    suspend fun delete(rule: PortForwardingRuleEntity)
 }

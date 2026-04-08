@@ -164,13 +164,15 @@ class SshSessionManager @Inject constructor(
 
         // 键盘交互式认证回调
         session.userInfo = object : UserInfo {
+            override fun getPassphrase(): String? = null
             override fun getPassword(): String? = passwordOverride
                 ?: host.passwordEncrypted?.let { cryptoManager.decrypt(it) }
             override fun promptYesNo(message: String?): Boolean = true
             override fun showMessage(message: String?) {}
-            override fun promptPassphrase(message: String?): String? = null
-            override fun promptPassword(message: String?): String? = passwordOverride
-                ?: host.passwordEncrypted?.let { cryptoManager.decrypt(it) }
+            override fun promptPassphrase(message: String?): Boolean = false
+            override fun promptPassword(message: String?): Boolean {
+                return passwordOverride != null || host.passwordEncrypted != null
+            }
         }
     }
 }

@@ -1,10 +1,13 @@
 package com.netcatty.mobile.data.mapper
 
 import com.netcatty.mobile.data.local.entity.HostEntity
+import com.netcatty.mobile.data.local.entity.PortForwardingRuleEntity
 import com.netcatty.mobile.data.local.entity.SshKeyEntity
 import com.netcatty.mobile.data.local.entity.SnippetEntity
 import com.netcatty.mobile.domain.model.*
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
 
 private val json = Json { ignoreUnknownKeys = true }
 
@@ -128,4 +131,32 @@ fun Snippet.toEntity(): SnippetEntity = SnippetEntity(
     targetHostIds = json.encodeToString(targetHostIds),
     shortcutKey = shortcutKey,
     noAutoRun = noAutoRun
+)
+
+// ─── PortForwardingRule ───
+
+fun PortForwardingRuleEntity.toDomain(): PortForwardingRule = PortForwardingRule(
+    id = id,
+    label = label,
+    type = PortForwardingType.valueOf(type),
+    localPort = localPort,
+    bindAddress = bindAddress,
+    remoteHost = remoteHost,
+    remotePort = remotePort,
+    hostId = hostId,
+    autoStart = autoStart,
+    createdAt = createdAt
+)
+
+fun PortForwardingRule.toEntity(): PortForwardingRuleEntity = PortForwardingRuleEntity(
+    id = id,
+    label = label,
+    type = type.name,
+    localPort = localPort,
+    bindAddress = bindAddress,
+    remoteHost = remoteHost,
+    remotePort = remotePort,
+    hostId = hostId,
+    autoStart = autoStart,
+    createdAt = createdAt
 )

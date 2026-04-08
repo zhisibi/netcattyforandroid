@@ -1,11 +1,9 @@
 package com.netcatty.mobile.domain.model
 
+import kotlinx.serialization.Serializable
 import java.util.UUID
 
-/**
- * SSH 密钥。
- * 字段与桌面端 SSHKey 对齐。
- */
+@Serializable
 data class SshKey(
     val id: String = UUID.randomUUID().toString(),
     val label: String,
@@ -19,5 +17,8 @@ data class SshKey(
     val created: Long = System.currentTimeMillis()
 )
 
+@Serializable
 enum class KeyType { RSA, ECDSA, ED25519 }
+
+@Serializable
 enum class KeyCategory { KEY, CERTIFICATE, IDENTITY }

@@ -1,11 +1,9 @@
 package com.netcatty.mobile.domain.model
 
+import kotlinx.serialization.Serializable
 import java.util.UUID
 
-/**
- * SSH 主机配置。
- * 字段与桌面端 Netcatty domain/models.ts Host 接口对齐。
- */
+@Serializable
 data class Host(
     val id: String = UUID.randomUUID().toString(),
     val label: String,
@@ -41,10 +39,16 @@ data class Host(
     val keywordHighlightRules: List<KeywordHighlightRule> = emptyList()
 )
 
+@Serializable
 enum class AuthMethod { PASSWORD, KEY, CERTIFICATE }
+
+@Serializable
 enum class HostProtocol { SSH, TELNET, LOCAL, SERIAL }
+
+@Serializable
 enum class DeviceType { GENERAL, NETWORK }
 
+@Serializable
 data class ProxyConfig(
     val type: String = "socks5",
     val host: String,
@@ -53,11 +57,13 @@ data class ProxyConfig(
     val password: String? = null
 )
 
+@Serializable
 data class EnvVar(
     val name: String,
     val value: String
 )
 
+@Serializable
 data class SftpBookmark(
     val id: String = UUID.randomUUID().toString(),
     val path: String,
@@ -65,6 +71,7 @@ data class SftpBookmark(
     val global: Boolean = false
 )
 
+@Serializable
 data class KeywordHighlightRule(
     val id: String = UUID.randomUUID().toString(),
     val label: String,

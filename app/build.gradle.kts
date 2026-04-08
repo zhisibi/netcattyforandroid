@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.dagger.hilt.android")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
@@ -8,12 +9,12 @@ plugins {
 
 android {
     namespace = "com.netcatty.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.netcatty.mobile"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
 
@@ -44,9 +45,7 @@ android {
         compose = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.15"
-    }
+    // composeOptions no longer needed with kotlin-plugin-compose
 
     packaging {
         resources {
@@ -56,7 +55,7 @@ android {
 }
 
 dependencies {
-    // Compose BOM
+    // Compose (compiler managed by kotlin-plugin-compose)
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")
@@ -79,11 +78,8 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    // SSH
+    // SSH (mwiede/jsch fork)
     implementation("com.github.mwiede:jsch:0.2.16")
-
-    // Termux terminal-emulator
-    implementation("com.termux:terminal-emulator:0.118.0")
 
     // Network
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

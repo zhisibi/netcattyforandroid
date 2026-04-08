@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.netcatty.mobile.data.local.AppDatabase
 import com.netcatty.mobile.data.local.dao.HostDao
+import com.netcatty.mobile.data.local.dao.PortForwardingRuleDao
 import com.netcatty.mobile.data.local.dao.SshKeyDao
 import com.netcatty.mobile.data.local.dao.SnippetDao
 import dagger.Module
@@ -24,7 +25,9 @@ object DataModule {
             context,
             AppDatabase::class.java,
             "netcatty.db"
-        ).build()
+        )
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides
@@ -35,4 +38,7 @@ object DataModule {
 
     @Provides
     fun provideSnippetDao(db: AppDatabase): SnippetDao = db.snippetDao()
+
+    @Provides
+    fun providePortForwardingRuleDao(db: AppDatabase): PortForwardingRuleDao = db.portForwardingRuleDao()
 }
