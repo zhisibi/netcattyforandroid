@@ -7,6 +7,7 @@ import com.jcraft.jsch.UserInfo
 import com.netcatty.mobile.core.crypto.FieldCryptoManager
 import com.netcatty.mobile.domain.model.AuthMethod
 import com.netcatty.mobile.domain.model.Host
+import com.netcatty.mobile.domain.repository.KeyRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -22,7 +23,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class SshSessionManager @Inject constructor(
-    private val cryptoManager: FieldCryptoManager
+    private val cryptoManager: FieldCryptoManager,
+    private val keyRepository: KeyRepository
 ) {
     private val connections = ConcurrentHashMap<String, SshConnection>()
     private val jsch = JSch()
@@ -148,7 +150,7 @@ class SshSessionManager @Inject constructor(
         }
     }
 
-    private fun configureAuth(session: Session, host: Host, passwordOverride: String?) {
+    private suspend fun configureAuth(session: Session, host: Host, passwordOverride: String?) {
         when (host.authMethod) {
             AuthMethod.PASSWORD -> {
                 val password = passwordOverride ?: resolvePassword(host.passwordEncrypted)
@@ -158,7 +160,32 @@ class SshSessionManager @Inject constructor(
                 }
             }
             AuthMethod.KEY -> {
-                // TODO: 从 KeyRepository 获取密钥并添加到 JSch
+                // Decrypt private key and add to JSch
+                val keyId = host.identityFileId
+                if (keyId != null) {
+                    val sshKey = keyRepository.getKeyById(keyId)
+                    if (sshKey != null) {
+                        val privateKey = resolvePassword(sshKey.privateKeyEncrypted)
+                            ?: throw IllegalStateException("Cannot decrypt SSH key")
+                        val passphrase = resolvePassword(sshKey.passphraseEncrypted)
+
+                        // Write private key to temp file (JSch needs file path)
+                        val tmpFile = java.io.File.createTempFile("netcatty_key_", ".pem")
+                        tmpFile.writeText(privateKey)
+                        tmpFile.deleteOnExit()
+
+                        if (passphrase != null) {
+                            jsch.addIdentity(tmpFile.absolutePath, passphrase.toByteArray())
+                        } else {
+                            jsch.addIdentity(tmpFile.absolutePath)
+                        }
+                    }
+                    // Also set password as fallback for keyboard-interactive
+                    val password = passwordOverride ?: resolvePassword(host.passwordEncrypted)
+                    if (password != null) {
+                        session.setPassword(password)
+                    }
+                }
             }
             AuthMethod.CERTIFICATE -> {
                 // TODO: 证书认证

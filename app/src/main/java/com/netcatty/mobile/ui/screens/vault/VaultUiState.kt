@@ -2,6 +2,7 @@ package com.netcatty.mobile.ui.screens.vault
 
 import com.netcatty.mobile.domain.model.Host
 import com.netcatty.mobile.domain.model.AuthMethod
+import com.netcatty.mobile.domain.model.SshKey
 
 data class VaultUiState(
     val hosts: List<Host> = emptyList(),
@@ -11,7 +12,8 @@ data class VaultUiState(
     val editingHost: Host? = null,
     val groups: List<String> = emptyList(),
     val selectedGroup: String? = null,
-    val snackbarMessage: String? = null
+    val snackbarMessage: String? = null,
+    val availableKeys: List<SshKey> = emptyList()
 ) {
     val filteredHosts: List<Host>
         get() {
@@ -44,6 +46,7 @@ data class HostFormState(
     val username: String = "",
     val password: String = "",
     val authMethod: AuthMethod = AuthMethod.PASSWORD,
+    val identityFileId: String? = null,  // SSH key ID for key-based auth
     val group: String = "",
     val tags: String = "",
     val isEdit: Boolean = false,

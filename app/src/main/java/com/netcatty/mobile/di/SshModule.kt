@@ -4,6 +4,7 @@ import com.netcatty.mobile.core.crypto.FieldCryptoManager
 import com.netcatty.mobile.core.crypto.SessionKeyHolder
 import com.netcatty.mobile.core.ssh.PortForwardingManager
 import com.netcatty.mobile.core.ssh.SshSessionManager
+import com.netcatty.mobile.domain.repository.KeyRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -16,8 +17,11 @@ object SshModule {
 
     @Provides
     @Singleton
-    fun provideSshSessionManager(cryptoManager: FieldCryptoManager): SshSessionManager {
-        return SshSessionManager(cryptoManager)
+    fun provideSshSessionManager(
+        cryptoManager: FieldCryptoManager,
+        keyRepository: KeyRepository
+    ): SshSessionManager {
+        return SshSessionManager(cryptoManager, keyRepository)
     }
 
     @Provides

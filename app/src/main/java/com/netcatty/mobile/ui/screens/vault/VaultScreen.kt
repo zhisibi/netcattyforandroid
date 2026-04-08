@@ -176,12 +176,14 @@ fun VaultScreen(
             HostFormDialog(
                 formState = formState,
                 isEdit = formState.isEdit,
+                availableKeys = uiState.availableKeys,
                 onLabelChange = viewModel::onFormLabelChanged,
                 onHostnameChange = viewModel::onFormHostnameChanged,
                 onPortChange = viewModel::onFormPortChanged,
                 onUsernameChange = viewModel::onFormUsernameChanged,
                 onPasswordChange = viewModel::onFormPasswordChanged,
                 onAuthMethodChange = viewModel::onFormAuthMethodChanged,
+                onIdentityKeyChange = viewModel::onFormIdentityKeyChanged,
                 onGroupChange = viewModel::onFormGroupChanged,
                 onTagsChange = viewModel::onFormTagsChanged,
                 onSave = viewModel::saveHost,
@@ -340,16 +342,19 @@ fun HostCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HostFormDialog(
     formState: HostFormState,
     isEdit: Boolean,
+    availableKeys: List<com.netcatty.mobile.domain.model.SshKey> = emptyList(),
     onLabelChange: (String) -> Unit,
     onHostnameChange: (String) -> Unit,
     onPortChange: (String) -> Unit,
     onUsernameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onAuthMethodChange: (AuthMethod) -> Unit,
+    onIdentityKeyChange: (String?) -> Unit,
     onGroupChange: (String) -> Unit,
     onTagsChange: (String) -> Unit,
     onSave: () -> Unit,
@@ -430,6 +435,45 @@ fun HostFormDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+
+                if (formState.authMethod == AuthMethod.KEY) {
+                    if (availableKeys.isEmpty()) {
+                        Text(
+                            "No SSH keys configured. Add keys in Settings.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        var keyExpanded by remember { mutableStateOf(false) }
+                        ExposedDropdownMenuBox(
+                            expanded = keyExpanded,
+                            onExpandedChange = { keyExpanded = !keyExpanded }
+                        ) {
+                            OutlinedTextField(
+                                value = availableKeys.find { it.id == formState.identityFileId }?.label ?: "Select key",
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = keyExpanded) },
+                                modifier = Modifier.fillMaxWidth().menuAnchor(),
+                                label = { Text("SSH Key") }
+                            )
+                            ExposedDropdownMenu(
+                                expanded = keyExpanded,
+                                onDismissRequest = { keyExpanded = false }
+                            ) {
+                                availableKeys.forEach { key ->
+                                    DropdownMenuItem(
+                                        text = { Text("${key.label} (${key.type})") },
+                                        onClick = {
+                                            onIdentityKeyChange(key.id)
+                                            keyExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 OutlinedTextField(

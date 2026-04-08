@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.netcatty.mobile.core.crypto.FieldCryptoManager
 import com.netcatty.mobile.domain.model.AuthMethod
 import com.netcatty.mobile.domain.model.Host
+import com.netcatty.mobile.domain.model.SshKey
 import com.netcatty.mobile.domain.repository.HostRepository
+import com.netcatty.mobile.domain.repository.KeyRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -14,6 +16,7 @@ import javax.inject.Inject
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     private val hostRepository: HostRepository,
+    private val keyRepository: KeyRepository,
     private val fieldCryptoManager: FieldCryptoManager
 ) : ViewModel() {
 
@@ -28,6 +31,12 @@ class VaultViewModel @Inject constructor(
             hostRepository.getAllHosts().collect { hosts ->
                 val groups = hosts.mapNotNull { it.group }.distinct().sorted()
                 _uiState.update { it.copy(hosts = hosts, groups = groups, isLoading = false) }
+            }
+        }
+        // Load available SSH keys
+        viewModelScope.launch {
+            keyRepository.getAllKeys().collect { keys ->
+                _uiState.update { it.copy(availableKeys = keys) }
             }
         }
     }
@@ -57,6 +66,7 @@ class VaultViewModel @Inject constructor(
                 port = host.port.toString(),
                 username = host.username,
                 authMethod = host.authMethod,
+                identityFileId = host.identityFileId,
                 group = host.group ?: "",
                 tags = host.tags.joinToString(", "),
                 isEdit = true,
@@ -90,6 +100,10 @@ class VaultViewModel @Inject constructor(
         _formState.update { it.copy(authMethod = value) }
     }
 
+    fun onFormIdentityKeyChanged(keyId: String?) {
+        _formState.update { it.copy(identityFileId = keyId) }
+    }
+
     fun onFormGroupChanged(value: String) {
         _formState.update { it.copy(group = value) }
     }
@@ -104,6 +118,9 @@ class VaultViewModel @Inject constructor(
         if (form.label.isBlank()) errors["label"] = "Label is required"
         if (form.hostname.isBlank()) errors["hostname"] = "Hostname is required"
         if (form.username.isBlank()) errors["username"] = "Username is required"
+        if (form.authMethod == AuthMethod.KEY && form.identityFileId == null) {
+            errors["authMethod"] = "Select an SSH key"
+        }
 
         if (errors.isNotEmpty()) {
             _formState.update { it.copy(errors = errors) }
@@ -114,7 +131,6 @@ class VaultViewModel @Inject constructor(
             val port = form.port.toIntOrNull() ?: 22
             val tags = form.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
-            // 密码处理：尝试加密，失败则存明文
             val passwordEncrypted = if (form.authMethod == AuthMethod.PASSWORD && form.password.isNotBlank()) {
                 encryptPassword(form.password)
             } else null
@@ -128,6 +144,7 @@ class VaultViewModel @Inject constructor(
                 username = form.username,
                 authMethod = form.authMethod,
                 passwordEncrypted = passwordEncrypted,
+                identityFileId = form.identityFileId,
                 group = form.group.ifBlank { null },
                 tags = tags,
                 createdAt = existingHost?.createdAt ?: System.currentTimeMillis()
@@ -138,10 +155,6 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    /**
-     * 加密密码。如果密钥不可用（未解锁），存明文。
-     * 格式：ENC:base64（加密）或 PLAIN:text（明文）
-     */
     private fun encryptPassword(password: String): String {
         return try {
             if (fieldCryptoManager.isKeyAvailable()) {
