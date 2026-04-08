@@ -1,12 +1,13 @@
 package com.netcatty.mobile.ui.screens.terminal
 
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -15,9 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -28,18 +26,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 
@@ -149,16 +141,92 @@ fun TerminalScreen(
 }
 
 /**
- * Real terminal emulator content.
- *
- * - Output lines are rendered in a LazyColumn
- * - A blinking block cursor appears right after the last output character
- *   (i.e. after the `#` or `$` prompt)
- * - A hidden 0-dp BasicTextField captures all keyboard input and forwards
- *   it to the SSH session
- * - Tapping anywhere on the terminal shows the soft keyboard
- * - imePadding() on the parent pushes everything up when the keyboard appears
+ * A hidden View that accepts keyboard input and forwards it to the SSH session.
+ * This avoids the BasicTextField + focusRequester crash (BringIntoViewRequester).
  */
+class TerminalInputView(context: android.content.Context, private val onTextInput: (String) -> Unit) : View(context) {
+
+    private var _imeEnabled = false
+
+    fun showKeyboard() {
+        val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        if (!_imeEnabled) {
+            _imeEnabled = true
+            // This triggers onCreateInputConnection
+            imm.restartInput(this)
+            imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+        } else {
+            imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+        }
+        requestFocus()
+    }
+
+    fun hideKeyboard() {
+        val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(windowToken, 0)
+    }
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
+        outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        outAttrs.actionId = EditorInfo.IME_ACTION_NONE
+        _imeEnabled = true
+
+        return object : android.view.inputmethod.BaseInputConnection(this, true) {
+            override fun commitText(text: CharSequence, newCursorPosition: Int): Boolean {
+                onTextInput(text.toString())
+                return true
+            }
+
+            override fun sendKeyEvent(event: KeyEvent): Boolean {
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    when (event.keyCode) {
+                        KeyEvent.KEYCODE_ENTER -> {
+                            onTextInput("\r")
+                            return true
+                        }
+                        KeyEvent.KEYCODE_DEL -> {
+                            onTextInput("\u007F")  // backspace
+                            return true
+                        }
+                        KeyEvent.KEYCODE_TAB -> {
+                            onTextInput("\t")
+                            return true
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> {
+                            onTextInput("\u001B[A")
+                            return true
+                        }
+                        KeyEvent.KEYCODE_DPAD_DOWN -> {
+                            onTextInput("\u001B[B")
+                            return true
+                        }
+                        KeyEvent.KEYCODE_DPAD_LEFT -> {
+                            onTextInput("\u001B[D")
+                            return true
+                        }
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            onTextInput("\u001B[C")
+                            return true
+                        }
+                    }
+                }
+                return super.sendKeyEvent(event)
+            }
+
+            override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
+                if (beforeLength > 0) {
+                    repeat(beforeLength) { onTextInput("\u007F") }
+                    return true
+                }
+                return super.deleteSurroundingText(beforeLength, afterLength)
+            }
+        }
+    }
+
+    override fun onCheckIsTextEditor(): Boolean = true
+}
+
 @Composable
 private fun TerminalContent(
     activeTab: TerminalTab,
@@ -166,13 +234,8 @@ private fun TerminalContent(
     onSpecialKey: (SpecialKey) -> Unit
 ) {
     val context = LocalContext.current
-    val view = LocalView.current
-    val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-
-    // Hidden field for keyboard capture — always empty, we just detect diffs
-    var hiddenText by remember { mutableStateOf(TextFieldValue(annotatedString = AnnotatedString(""), selection = TextRange(0))) }
 
     // Blinking cursor animation
     val infiniteTransition = rememberInfiniteTransition(label = "cursor")
@@ -195,16 +258,6 @@ private fun TerminalContent(
         }
     }
 
-    // Request focus when active tab changes (delay to ensure layout is complete)
-    LaunchedEffect(activeTab.id) {
-        kotlinx.coroutines.delay(300)
-        try {
-            focusRequester.requestFocus()
-        } catch (_: IllegalStateException) {
-            // BringIntoViewRequester not ready yet, ignore
-        }
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
 
         // === Visible terminal output + cursor ===
@@ -212,11 +265,11 @@ private fun TerminalContent(
             modifier = Modifier
                 .fillMaxSize()
                 .clickable {
-                    try {
-                        focusRequester.requestFocus()
-                    } catch (_: IllegalStateException) {}
-                    val imm = context.getSystemService(InputMethodManager::class.java)
-                    imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                    // Delegate to TerminalInputView to show keyboard
+                    // We find the view and show keyboard through it
+                    val rootView = (context as? android.app.Activity)?.window?.decorView
+                    val inputView = rootView?.findViewWithTag<TerminalInputView>("terminal_input")
+                    inputView?.showKeyboard()
                 }
         ) {
             // Status bar
@@ -285,36 +338,19 @@ private fun TerminalContent(
             }
         }
 
-        // === Hidden TextField: 0-dp, captures keyboard input ===
-        BasicTextField(
-            value = hiddenText,
-            onValueChange = { newTfv ->
-                val oldText = hiddenText.text
-                val newText = newTfv.text
-
-                if (newText.length > oldText.length) {
-                    val added = newText.substring(oldText.length)
-                    onSendText(added)
-                } else if (newText.length < oldText.length) {
-                    val deleteCount = oldText.length - newText.length
-                    repeat(deleteCount) { onSpecialKey(SpecialKey.BACKSPACE) }
+        // === Hidden AndroidView for keyboard input — NO BasicTextField, NO focusRequester ===
+        AndroidView(
+            factory = { ctx ->
+                TerminalInputView(ctx) { text ->
+                    onSendText(text)
+                }.apply {
+                    tag = "terminal_input"
+                    layoutParams = android.widget.FrameLayout.LayoutParams(1, 1)  // 1x1px, effectively invisible
+                    isFocusable = true
+                    isFocusableInTouchMode = true
                 }
-
-                // Always reset to empty
-                hiddenText = TextFieldValue(annotatedString = AnnotatedString(""), selection = TextRange(0))
             },
-            modifier = Modifier
-                .focusRequester(focusRequester)
-                .size(0.dp),
-            textStyle = TextStyle(fontSize = 1.sp, color = Color.Transparent),
-            cursorBrush = SolidColor(Color.Transparent),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Text,
-                imeAction = ImeAction.Done
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = { onSpecialKey(SpecialKey.ENTER) }
-            )
+            modifier = Modifier.size(1.dp)  // 1dp x 1dp — invisible but functional
         )
     }
 }
