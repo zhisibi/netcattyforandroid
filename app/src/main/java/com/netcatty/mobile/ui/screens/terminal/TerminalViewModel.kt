@@ -22,7 +22,8 @@ import javax.inject.Inject
 class TerminalViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val sshSessionManager: SshSessionManager,
-    private val hostRepository: HostRepository
+    private val hostRepository: HostRepository,
+    private val snippetRepository: com.netcatty.mobile.domain.repository.SnippetRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TerminalUiState())
@@ -31,6 +32,9 @@ class TerminalViewModel @Inject constructor(
     private val terminalSessions = mutableMapOf<String, NetcattyTerminalSession>()
 
     private val connectedHostIds = mutableSetOf<String>()
+
+    /** Snippets for the snippet picker */
+    val snippets = snippetRepository.getAllSnippets()
 
     /**
      * 连接到主机并创建新的终端 Tab
@@ -131,6 +135,30 @@ class TerminalViewModel @Inject constructor(
     fun writeToTerminal(data: String) {
         val sessionId = _uiState.value.activeSessionId ?: return
         terminalSessions[sessionId]?.write(data)
+    }
+
+    fun executeSnippet(snippet: com.netcatty.mobile.domain.model.Snippet) {
+        val sessionId = _uiState.value.activeSessionId ?: return
+        val session = terminalSessions[sessionId] ?: return
+        // Send the snippet command + Enter
+        session.write(snippet.command + "\r")
+    }
+
+    fun addSnippet(label: String, command: String) {
+        viewModelScope.launch {
+            snippetRepository.insertSnippet(
+                com.netcatty.mobile.domain.model.Snippet(
+                    label = label,
+                    command = command
+                )
+            )
+        }
+    }
+
+    fun deleteSnippet(snippet: com.netcatty.mobile.domain.model.Snippet) {
+        viewModelScope.launch {
+            snippetRepository.deleteSnippet(snippet)
+        }
     }
 
     fun sendSpecialKey(key: SpecialKey) {

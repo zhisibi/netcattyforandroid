@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.netcatty.mobile.ui.theme.TerminalConfig
+import com.netcatty.mobile.ui.screens.snippet.SnippetPickerSheet
 import kotlinx.coroutines.launch
 
 private val TERMINAL_BG = Color(0xFF1E1E2E)
@@ -50,6 +51,9 @@ fun TerminalScreen(
     viewModel: TerminalViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    var showSnippetSheet by remember { mutableStateOf(false) }
+    val snippets by viewModel.snippets.collectAsState(initial = emptyList())
 
     LaunchedEffect(connectHostId) {
         if (connectHostId != null && uiState.sessions.none { it.hostId == connectHostId }) {
@@ -128,7 +132,33 @@ fun TerminalScreen(
 
         // Special keys row — always pinned at bottom, above keyboard
         if (uiState.activeSession != null) {
-            SpecialKeysRow(onSpecialKey = { viewModel.sendSpecialKey(it) })
+            SpecialKeysRow(
+                onSpecialKey = { viewModel.sendSpecialKey(it) },
+                onShowSnippets = { showSnippetSheet = true }
+            )
+        }
+    }
+
+    // Snippet bottom sheet
+    if (showSnippetSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSnippetSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            SnippetPickerSheet(
+                snippets = snippets,
+                onExecuteSnippet = { snippet ->
+                    viewModel.executeSnippet(snippet)
+                    showSnippetSheet = false
+                },
+                onAddSnippet = { label, command ->
+                    viewModel.addSnippet(label, command)
+                },
+                onDeleteSnippet = { snippet ->
+                    viewModel.deleteSnippet(snippet)
+                },
+                onDismiss = { showSnippetSheet = false }
+            )
         }
     }
 
@@ -404,7 +434,8 @@ private fun TerminalContent(
 
 @Composable
 fun SpecialKeysRow(
-    onSpecialKey: (SpecialKey) -> Unit
+    onSpecialKey: (SpecialKey) -> Unit,
+    onShowSnippets: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -414,6 +445,7 @@ fun SpecialKeysRow(
             .padding(horizontal = 4.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        SpecialKeyBtn("⚡", onClick = onShowSnippets)  // Snippet button
         SpecialKeyBtn("ESC", onClick = { onSpecialKey(SpecialKey.ESC) })
         SpecialKeyBtn("Tab", onClick = { onSpecialKey(SpecialKey.TAB) })
         SpecialKeyBtn("⌃C", onClick = { onSpecialKey(SpecialKey.CTRL_C) })
