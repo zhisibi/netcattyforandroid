@@ -2,10 +2,11 @@ package com.netcatty.mobile.ui.navigation
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -21,6 +22,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
+import com.netcatty.mobile.ui.screens.aichat.AiChatScreen
 import com.netcatty.mobile.ui.screens.settings.SettingsScreen
 import com.netcatty.mobile.ui.screens.sftp.SftpScreen
 import com.netcatty.mobile.ui.screens.terminal.TerminalScreen
@@ -32,6 +34,7 @@ object Routes {
     const val TERMINAL = "terminal"
     const val TERMINAL_HOST = "terminal/{hostId}"
     const val SFTP = "sftp"
+    const val AI_CHAT = "ai_chat"
     const val SETTINGS = "settings"
 }
 
@@ -42,9 +45,10 @@ data class BottomNavItem(
 )
 
 val bottomNavItems = listOf(
-    BottomNavItem(Routes.VAULT, "Vault", Icons.Filled.ViewList),
+    BottomNavItem(Routes.VAULT, "Vault", Icons.AutoMirrored.Filled.ViewList),
     BottomNavItem(Routes.TERMINAL, "Terminal", Icons.Filled.Terminal),
     BottomNavItem(Routes.SFTP, "SFTP", Icons.Filled.Folder),
+    BottomNavItem(Routes.AI_CHAT, "AI", Icons.AutoMirrored.Filled.Send),
     BottomNavItem(Routes.SETTINGS, "Settings", Icons.Filled.Settings),
 )
 
@@ -113,6 +117,10 @@ fun NetcattyNavHost(navController: NavHostController) {
 
             composable(Routes.SFTP) {
                 SftpScreen()
+            }
+
+            composable(Routes.AI_CHAT) {
+                AiChatScreen()
             }
 
             composable(Routes.SETTINGS) {

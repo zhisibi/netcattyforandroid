@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -268,7 +269,7 @@ fun InputBar(
             )
         )
         IconButton(onClick = onSend) {
-            Icon(Icons.Default.Send, contentDescription = "Send", tint = TERMINAL_FG)
+            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = TERMINAL_FG)
         }
     }
 }
