@@ -25,10 +25,22 @@ class TerminalViewModel @Inject constructor(
 
     private val terminalSessions = mutableMapOf<String, NetcattyTerminalSession>()
 
+    private val connectedHostIds = mutableSetOf<String>()
+
     /**
      * 连接到主机并创建新的终端 Tab
      */
     fun connectToHost(hostId: String) {
+        // 防止重复连接
+        if (hostId in connectedHostIds) {
+            android.util.Log.d("TerminalVM", "Already connected to $hostId, switching tab")
+            val existing = _uiState.value.sessions.find { it.hostId == hostId }
+            if (existing != null) {
+                _uiState.update { it.copy(activeSessionId = existing.id) }
+            }
+            return
+        }
+        connectedHostIds.add(hostId)
         android.util.Log.d("TerminalVM", "connectToHost called: hostId=$hostId")
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isConnecting = true, connectionError = null) }
@@ -52,17 +64,27 @@ class TerminalViewModel @Inject constructor(
                         hostname = host.hostname,
                         username = host.username,
                         status = TerminalStatus.CONNECTED,
-                        output = StringBuilder()
+                        output = ""
                     )
 
-                    // 创建终端会话
+                    // 先添加tab到UI（确保onOutput能找到对应session）
+                    _uiState.update {
+                        it.copy(
+                            sessions = it.sessions + tab,
+                            activeSessionId = connection.id,
+                            isConnecting = false
+                        )
+                    }
+
+                    // 创建终端会话并启动读取
                     val terminalSession = NetcattyTerminalSession(
                         connection = connection,
                         onOutput = { data ->
+                            android.util.Log.d("TerminalVM", "onOutput: len=${data.length} preview=${data.take(50)}")
                             _uiState.update { state ->
                                 val sessions = state.sessions.map {
                                     if (it.id == connection.id) {
-                                        it.copy(output = it.output.append(data))
+                                        it.copy(output = it.output + data)
                                     } else it
                                 }
                                 state.copy(sessions = sessions)
@@ -81,14 +103,6 @@ class TerminalViewModel @Inject constructor(
                     )
                     terminalSessions[connection.id] = terminalSession
                     terminalSession.start()
-
-                    _uiState.update {
-                        it.copy(
-                            sessions = it.sessions + tab,
-                            activeSessionId = connection.id,
-                            isConnecting = false
-                        )
-                    }
 
                     // 更新最后连接时间
                     launch { hostRepository.updateLastConnected(hostId, System.currentTimeMillis()) }
@@ -136,6 +150,8 @@ class TerminalViewModel @Inject constructor(
     }
 
     fun closeTab(sessionId: String) {
+        val tab = _uiState.value.sessions.find { it.id == sessionId }
+        if (tab != null) connectedHostIds.remove(tab.hostId)
         terminalSessions.remove(sessionId)?.close()
         sshSessionManager.disconnect(sessionId)
         _uiState.update { state ->

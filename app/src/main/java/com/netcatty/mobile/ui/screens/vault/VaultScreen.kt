@@ -226,15 +226,18 @@ fun HostCard(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         )
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            // Row 1: Icon + Info + Pin/Edit/Delete
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Row 1: Icon + Info
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onConnectSsh)  // 点击整个卡片头部连SSH
             ) {
                 // Icon
                 Surface(
-                    modifier = Modifier.size(40.dp),
-                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -248,7 +251,7 @@ fun HostCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = host.label,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -268,56 +271,69 @@ fun HostCard(
                         )
                     }
                 }
+            }
 
-                // Action buttons: Pin, Edit, Delete
-                IconButton(onClick = onPin, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        Icons.Default.PushPin,
-                        contentDescription = if (host.pinned) "Unpin" else "Pin",
-                        tint = if (host.pinned) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.size(16.dp)
-                    )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Row 2: SSH + SFTP connect buttons (大按钮，容易点击)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // SSH button - 填充按钮，更显眼
+                Button(
+                    onClick = onConnectSsh,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("SSH", style = MaterialTheme.typography.titleSmall)
                 }
-                IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(16.dp))
-                }
-                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp))
+
+                // SFTP button - 描边按钮
+                OutlinedButton(
+                    onClick = onConnectSftp,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("SFTP", style = MaterialTheme.typography.titleSmall)
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Row 2: SSH + SFTP connect buttons
+            // Row 3: 小操作按钮
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.End
             ) {
-                // SSH button
-                OutlinedButton(
-                    onClick = onConnectSsh,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("SSH", style = MaterialTheme.typography.labelMedium)
+                // Pin
+                IconButton(onClick = onPin) {
+                    Icon(
+                        Icons.Default.PushPin,
+                        contentDescription = if (host.pinned) "Unpin" else "Pin",
+                        tint = if (host.pinned) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
                 }
-
-                // SFTP button
-                OutlinedButton(
-                    onClick = onConnectSftp,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("SFTP", style = MaterialTheme.typography.labelMedium)
+                // Edit
+                IconButton(onClick = onEdit) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+                // Delete
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                    )
                 }
             }
         }

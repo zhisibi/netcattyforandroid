@@ -3,7 +3,8 @@ package com.netcatty.mobile.ui.screens.terminal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -42,7 +43,7 @@ fun TerminalScreen(
 
     // Auto-connect when navigating from Vault with a hostId
     LaunchedEffect(connectHostId) {
-        if (connectHostId != null) {
+        if (connectHostId != null && uiState.sessions.none { it.hostId == connectHostId }) {
             viewModel.connectToHost(connectHostId)
         }
     }
@@ -83,7 +84,7 @@ fun TerminalScreen(
         }
 
         // Terminal output area
-        Box(
+        Column(
             modifier = Modifier
                 .weight(1f)
                 .background(TERMINAL_BG)
@@ -155,22 +156,29 @@ fun TerminalScreen(
                         )
                     }
 
-                    // Terminal content
-                    val scrollState = rememberScrollState()
-                    LaunchedEffect(activeTab.output.length) {
-                        scrollState.animateScrollTo(scrollState.maxValue)
-                    }
-                    Text(
-                        text = activeTab.output.toString(),
-                        color = TERMINAL_FG,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
+                    // Terminal content - use LazyColumn for proper rendering
+                    val lines = activeTab.output.split("\n")
+                    androidx.compose.foundation.lazy.LazyColumn(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(scrollState)
-                            .padding(8.dp),
-                        softWrap = true
-                    )
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(TERMINAL_BG)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        state = rememberLazyListState()
+                    ) {
+                        items(lines.size) { index ->
+                            Text(
+                                text = lines[index],
+                                color = TERMINAL_FG,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 13.sp,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                } else {
+                    // No active session but sessions exist - shouldn't happen
+                    Spacer(modifier = Modifier.weight(1f).background(TERMINAL_BG))
                 }
             }
         }

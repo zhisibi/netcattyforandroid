@@ -24,10 +24,12 @@ class NetcattyTerminalSession(
             try {
                 while (alive && connection.status == SshConnection.ConnectionStatus.CONNECTED) {
                     val read = connection.inputStream.read(buffer)
+                    android.util.Log.d("TerminalSession", "read $read bytes from ssh")
                     if (read == -1) break
                     val raw = String(buffer, 0, read, Charsets.UTF_8)
                     // Strip ANSI codes for plain text rendering
                     val cleaned = AnsiStripper.strip(raw)
+                    android.util.Log.d("TerminalSession", "cleaned: len=${cleaned.length} preview=${cleaned.take(80)}")
                     if (cleaned.isNotEmpty()) {
                         onOutput(cleaned)
                     }

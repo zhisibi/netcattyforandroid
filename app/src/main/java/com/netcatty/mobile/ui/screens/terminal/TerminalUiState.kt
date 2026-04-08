@@ -20,7 +20,7 @@ data class TerminalTab(
     val hostname: String,
     val username: String,
     val status: TerminalStatus = TerminalStatus.CONNECTING,
-    val output: StringBuilder = StringBuilder()
+    val output: String = ""
 )
 
 enum class TerminalStatus { CONNECTING, CONNECTED, DISCONNECTED, ERROR }
