@@ -1,74 +1,81 @@
-# Netcatty for Android
+# Netcatty Android
 
-> AI-Powered SSH Client for Android — based on [Netcatty](https://github.com/binaricat/Netcatty)
+Netcatty Android 是桌面端 Netcatty 的移动端版本，旨在为开发者、运维工程师和 DevOps 人员提供一个在移动设备上管理远程服务器的强大工具。
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Platform-Android-green?style=for-the-badge&logo=android">
-  <img src="https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=for-the-badge&logo=kotlin">
-  <img src="https://img.shields.io/badge/Compose-Material3-4285F4?style=for-the-badge&logo=jetpackcompose">
-  <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge">
-</p>
+## ✨ 主要功能
 
-## 📱 What is Netcatty for Android?
+*   **SSH 终端：** 支持密码、密钥认证，提供可靠的 SSH 连接（使用 WakeLock 保活）。
+*   **SFTP 文件管理：** 浏览远程文件，支持上传、下载、新建文件夹、重命名、删除。
+*   **Vault 主机管理：** 安全存储和管理 SSH 主机信息，支持分组、标签、置顶。
+*   **生物识别解锁：** 可选指纹/面容解锁，提升安全性。
+*   **端侧输入优化：** 改进的终端输入体验，可见输入栏，支持特殊键和键盘切换。
+*   **Snippet 快捷命令：** 在终端中通过 `⚡` 按钮快速执行预设命令。
+*   **端口转发：** 支持 Local, Remote, Dynamic (SOCKS) 端口转发规则管理。
+*   **全局设置：** 可定制暗色模式、终端字体大小。
+*   **AI 辅助：** 集成 AI 聊天功能（开发中）。
 
-Netcatty for Android is a mobile SSH client and terminal manager, ported from the desktop [Netcatty](https://github.com/binaricat/Netcatty) project. It brings the power of AI-assisted server management to your fingertips.
+## 🚀 项目状态
 
-### Core Features
+Netcatty Android 正在积极开发中，已实现核心功能，并不断迭代优化。
 
-- 🔐 **SSH Connection** — Password / Key / Certificate authentication
-- 🖥️ **Terminal** — Full xterm-256color terminal with touch-friendly input
-- 📁 **SFTP** — Dual-pane file browser with upload/download
-- 🔄 **Cloud Sync** — Zero-knowledge encrypted sync with desktop (GitHub Gist / Google Drive / OneDrive / WebDAV / S3)
-- 🤖 **AI Assistant** — Natural language server management
-- 🔑 **Secure Storage** — Android Keystore + AES-GCM field encryption + Biometric unlock
-- 📡 **Port Forwarding** — Local / Remote / Dynamic SSH tunnels
-- ⚡ **Snippets** — Quick command templates
+### 近期更新亮点：
 
-## 🏗️ Tech Stack
+*   **SSH 连接稳定性：** 采用 WakeLock 机制代替原有的前台服务，解决了 Android 14+ 的兼容性问题，确保后台连接不中断。
+*   **安全增强：** 集成了生物识别解锁功能，并完善了 Vault 的锁定/解锁流程。
+*   **终端输入体验：** 引入可见输入栏，彻底解决了键盘输入不畅的问题，并支持快捷命令（Snippets）。
+*   **端口转发 UI：** 实现了端口转发规则的管理界面。
+*   **全局设置：** 支持暗色模式切换和终端字体大小自定义。
 
-| Category | Technology |
-|----------|------------|
-| Language | Kotlin 2.0+ |
-| UI | Jetpack Compose + Material 3 |
-| SSH | JSch 0.2.16 |
-| Terminal | Termux terminal-emulator |
-| Database | Room + SQLite |
-| DI | Hilt |
-| Network | OkHttp + Retrofit |
-| Crypto | Android Keystore + JCA (AES-GCM / PBKDF2) |
+### 待办事项：
 
-## 📖 Documentation
+*   完善 SFTP 传输进度显示与通知。
+*   实现端口转发的后端逻辑（实际启动/停止）。
+*   集成 AI Chat 功能。
+*   增加自动化测试覆盖。
 
-| Document | Description |
-|----------|-------------|
-| [Feasibility Report](docs/Netcatty-Android-Feasibility-Report.md) | 移植可行性分析与方案对比 |
-| [Development Guide](docs/Netcatty-Android-Dev-Doc.md) | 开发文档（技术选型、模块指南、数据模型） |
-| [Architecture Design](docs/Netcatty-Android-Architecture.md) | 架构设计（分层、核心模块、安全、云同步） |
+## 🛠️ 构建与运行
 
-## 🗓️ Roadmap
+### 构建环境
 
-| Phase | Content | Timeline |
-|-------|---------|----------|
-| 0 | Project setup (Hilt + Room + JSch) | Week 1 |
-| 1 | Core SSH + Terminal + Vault | Week 2-5 |
-| 2 | SFTP + File management | Week 6-8 |
-| 3 | Split terminal + Port forwarding + Themes | Week 9-11 |
-| 4 | Encryption + Biometric + Cloud sync | Week 12-13 |
-| 5 | AI Chat integration | Week 14-15 |
-| 6 | Polish + Play Store | Week 16-17 |
+*   **Android Studio**
+*   **JDK**: 21+
+*   **Android SDK**: API 34+ (platforms-34, build-tools-34.0.0)
+*   **Gradle**: 8.11+
+*   **Min SDK**: 26 (Android 8.0)
+*   **Target SDK**: 36 (Android 14+)
+*   **Kotlin**: 2.0+
+*   **Compose**: Material 3
 
-## ☁️ Cloud Sync Compatibility
+### 构建步骤
 
-Netcatty for Android uses the **same encrypted sync format** as the desktop version, enabling seamless bidirectional sync:
-
-- Same master password → same derived key → can decrypt each other's files
-- Git-style three-way merge handles multi-device edits
-- Zero-knowledge: cloud providers only see encrypted ciphertext
-
-## 📄 License
-
-This project is licensed under **GPL-3.0-or-later**, consistent with the upstream [Netcatty](https://github.com/binaricat/Netcatty) project.
+1.  **克隆仓库：**
+    ```bash
+    git clone https://github.com/zhisibi/netcattyforandroid.git
+    cd netcattyforandroid
+    ```
+2.  **配置 Gradle 镜像：**
+    请确保在 `settings.gradle.kts` 或 `build.gradle.kts` 文件中配置了阿里云 Maven 镜像，以解决 Google Maven 访问问题：
+    ```kotlin
+    maven { url = uri("https://maven.aliyun.com/repository/google") }
+    maven { url = uri("https://maven.aliyun.com/repository/public") }
+    ```
+3.  **同步项目并构建：**
+    ```bash
+    ./gradlew assembleDebug
+    ```
+4.  **安装 APK：**
+    ```bash
+    adb install app/build/outputs/apk/debug/app-debug.apk
+    ```
 
 ---
 
-*Made with 🦞 by zhisibi*
+## 📜 许可证
+
+Netcatty Android 项目遵循 **GPL-3.0-or-later** 许可证。
+
+---
+
+## 💖 贡献
+
+欢迎提交 Issue 和 Pull Request！
